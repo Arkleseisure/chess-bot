@@ -41,11 +41,38 @@ void apply(unsigned long long* board, unsigned long long* move, int* extras, uns
 	unsigned long long piece = *(move + 2) >> 4;
 	int castling = *extras;
 	int to_play = *(extras + 1);
+	int p=(1-to_play)*6;
 
 	// applies the move to the bitboard for that piece
 	*(board + piece) ^= *move;
 	*(board + piece) ^= *(move + 1);
-
+//handling castling, I might've made a mistake with direction, but I think it works, AJ
+//also I dont know if this if statement handles the flag correctly
+	if ( *(move + 2 == 2){
+		*(board+5+p)^=(*(board+5+p)&(*(board+5+p)+2));// I was thinking that this would shift the piece?
+		*(board+3+p)^=(*(board+3+p)&(*(board+3+p)-3));
+	}
+	
+	if ( *(move + 2) == 3){
+		*(board+5+p)^=(*(board+5+p)&(*(board+5+p)-2));
+		*(board+3+p)^=(*(board+5+p)&(*(board+5+p)+4));
+	}
+//en passant
+	if ( *(move + 2) == 5){
+		// I dont know how to remove a specific piece
+	}
+//promotion
+	if (12>> *(move + 2) >> 7){
+		*(board+*(move+2)-7+p)=(*(board+*(move+2)-7+p)&*(move));
+		*(board+p)^=(*(board+p)&*(move));
+	}
+	if (12>> *(move + 2) >> 7){
+		//was gonna do this, but then its hard to specify what was taken on that
+		//square, we could loop through all bit boards, but I feel like theres a better way
+	}
+	
+	
+	
 	// removes any piece of the opposing colour on the square the piece lands on
 	for (int i = (1 - to_play) * 6; i < 6 * (1 - to_play) + 6; i++) {
 		*(board + i) ^= (*(board + i) & *(move + 1));
