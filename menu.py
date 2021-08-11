@@ -1,9 +1,11 @@
-﻿import random
+import random
 from display_menu import display_menu, get_option
 
-
-# Displays a menu for the user to choose their opponent and colour.
-# Last Modified: 28/06/2021
+'''
+Displays a menu for the user to choose their opponent and colour.
+Last Modified: 28/06/2021
+Last Modified by: Arkleseisure
+'''
 def menu():
     # Opponent choice
     options = ['Play human', 'Play computer', 'Exit']
