@@ -1,6 +1,7 @@
-﻿import pygame
-from draw_board import initialize_pygame_stuff, draw_board, get_square
-from c_interface import apply
+import pygame
+from draw_board import initialize_pygame_stuff, draw_board, get_square, print_board
+from c_interface import apply, initiate_piece_list, legal_moves
+import Bits_and_pieces as BaP
 
 # Plays through a full game of chess.
 # Last Modified: 29/06/2021
@@ -38,7 +39,8 @@ def play_game(colour, ai):
 
 
 # initializes items required for playing the game.
-# Last Modified: 01/07/2021
+# Last Modified: 11/8/2021
+# Last Modified by: Arkleseisure
 def initialize_game(colour):
     '''
     Creates bitboards for each piece type... The positions of the pieces are each represented by a single unsigned 8 byte integer
@@ -51,8 +53,22 @@ def initialize_game(colour):
     00000000
     11111111
     00000000
-
+    
     It is generally easier to use hex
+
+    This means that the value added by each square is equal to 2 ^ square number, where the square number is given by 
+    this grid (as viewed from white's perspective):
+    56 57 58 59 60 61 62 63
+    48 49 50 51 52 53 54 55
+    40 41 42 43 44 45 46 47
+    32 33 34 35 36 37 38 39
+    24 25 26 27 28 29 30 31
+    16 17 18 19 20 21 22 23
+    8  9  10 11 12 13 14 15
+    0  1  2  3  4  5  6  7
+
+    This can be calculated as 8 * row + file and hence the bitboard for each piece can be easily calculated from its coordinates on the board.
+    At the time of writing I haven't used this yet, but I may and you may find it useful.
     '''
 
     white_pawns     = 0x000000000000FF00
@@ -93,13 +109,16 @@ def initialize_game(colour):
     14 = rook promotion with capture
     15 = queen promotion with capture
 
-    Added to the front of this are 3 bits referring to the piece moved:
+    Added to the front of this are 4 bits referring to the piece moved:
+    0 - 5 = white, 6 - 11 = black
     0 = pawn
     1 = knight
     2 = bishop
     3 = rook
     4 = queen
     5 = king
+
+    In front of this are 7 bits referring to the index of the piece in the piece list.
 
     This also helps make moves easier to reverse, as all the information about the move is easily retrievable.
     '''
@@ -111,19 +130,30 @@ def initialize_game(colour):
     # legality of castling, represented by a four bit number 
     castling = 0xF
 
-    return background, buttons, board, last_move, castling
+    piece_list = initiate_piece_list()
+
+    return background, buttons, board, last_move, castling, piece_list
 
 
 # function used until all the functions in play_game are coded, allows us to test what we've done so far
 # Last Modified: 04/07/2021
 def do_test_stuff(colour, ai):
-    background, buttons, board, last_move, castling = initialize_game(colour)
+    background, buttons, board, last_move, castling, piece_list = initialize_game(colour)
     to_play = 0
 
     quit = False
     square_selected = False
     while not quit:
         draw_board(colour, background, buttons, board, last_move, current_move=0)
+
+        print_board(board)
+
+        print('printing legal moves')
+        poss_moves = legal_moves(board, castling, to_play, last_move, piece_list)
+        # prints the legal moves as [starting square][finishing square] [flag] [piece type] [piece index]
+        for move in poss_moves:
+            print(BaP.convert_to_text(move[0]) + BaP.convert_to_text(move[1]) + ' ' + str(move[2] % 16) + ' ' + str((move[2] % 256) // 16) + ' ' + str(move[2] // 256))
+
         if not square_selected:
             move_from, button_clicked = get_square(colour, buttons)
 
@@ -133,26 +163,19 @@ def do_test_stuff(colour, ai):
             draw_board(colour, background, buttons, board, last_move, move_from)
             move_to, button_clicked = get_square(colour, buttons)
 
-            # Figures out which piece has been moved
-            move_from_no = len(bin(move_from)) - 2
-            move_to_no = len(bin(move_to)) - 2
-            flag = -1
-            for i in range(len(board)):
-                bit_board = bin(board[i])
-                if len(bit_board) >= move_from_no and bit_board[-move_from_no] == '1':
-                    flag = i * 16
-
-                # removes moves where they take their own piece
-                if len(bit_board) >= move_to_no and bit_board[-move_to_no] == '1' and (i > 5) == (to_play == 1):
-                    flag = -2
-                    break
+            # checks if the move is legal
+            move = [0,0,0]
+            for i in range(len(poss_moves)):
+                if poss_moves[i][0] == move_from and poss_moves[i][1] == move_to:
+                    move = poss_moves[i]
 
             # exits if the exit button is clicked, otherwise applies the move to the board
             if button_clicked == 'Exit':
                 quit = True
-            elif (0 <= flag < 6 * 16 and to_play == 0) or (6 * 16 <= flag < 12 * 16 and to_play == 1):
-                board, [castling, to_play], last_move = apply(board, [move_from, move_to, flag], castling, to_play)
+            elif move != [0, 0, 0]:
+                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
                 square_selected = False
             else:
                 move_from = move_to
                 square_selected = True
+
