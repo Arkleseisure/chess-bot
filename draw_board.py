@@ -1,4 +1,4 @@
-﻿import pygame
+import pygame
 import pygame.freetype
 import os
 
@@ -12,9 +12,9 @@ board_y = screen_height // 10
 # colours
 white = [255, 255, 255]
 black = [0, 0, 0]
-dark_square_colour = [20, 100, 20]
+dark_square_colour = [150, 100, 0]
 light_square_colour = [255, 255, 255]
-border_colour = [50, 70, 30]
+border_colour = [0, 100, 0]
 location_highlight_colour = [50, 200, 50]
 destination_highlight_colour = [60, 130, 70]
 background_colour = [0, 0, 0]
@@ -25,8 +25,24 @@ pygame.init()
 screen = pygame.display.set_mode([screen_width, screen_height])
 pygame.display.set_caption("Chess")
 
-# parent class for many different objects which are rectangular and may have text in them
-# Last Modified: 03/07/2021
+'''
+Parent class for many different objects which are rectangular and may have text in them
+
+width: width of the box
+height: height of the box
+x: x coordinate of the top left of the box (using pygame's grid... top left of screen is (0, 0), and each unit is 1 pixel across)
+y: y coordinate of the top left of the box
+colour: RGB value of the background of the box, 0-255 for each colour
+text: text which appears in the center of the box
+font: font the text appears in
+font_size: size of the font
+font_colour: RGB value, 0-255 for each like the background
+bold: boolean determining whether the text is bold
+italic: boolean determining whether the text is italic
+
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 class RectangleSprite(pygame.sprite.Sprite):
     def __init__(self, width, height, x=0, y=0, colour=[0,0,0], text='', font='Calibri', font_size=40, font_colour=[0,0,0], bold=False, italic=False):
             super().__init__()
@@ -52,27 +68,35 @@ class RectangleSprite(pygame.sprite.Sprite):
                 self.image.blit(print_image, ((width - text_width)//2, (height - text_height)//2))
 
 
-# sprite class for the background colour
+# sprite class for the sprite which covers the background of the board
 # Last Modified: 03/07/2021
+# Last Modified by: Arkleseisure
 class BackgroundColour(RectangleSprite):
     def __init__(self):
         super().__init__(width=screen_width, height=screen_height, colour=background_colour)
 
+'''
+Class for sprites of the squares of the board
 
-# class for sprites of the squares of the board
-# colour = colour of the square
-# x = x position relative to board (when looking from white's perspective, x=0 is the a file)
-# y = y position relative to board (when looking from white's perspective, y=0 is the 8th rank)
-# Last Modified: 03/07/2021
+colour: colour of the square, RGB 0-255
+x: x position relative to board (when looking from white's perspective, x=0 is the a file)
+y: y position relative to board (when looking from white's perspective, y=0 is the 8th rank)
+
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 class Square(RectangleSprite):
     def __init__(self, colour, x, y):
         super().__init__(width=square_size, height=square_size, x=board_x + x * square_size, y=board_y + y * square_size, colour=colour)
 
+'''
+Class for the row and column labels on the side of the board
+x, y: see description for square
+text: text in the label
 
-# class for the row and column labels on the side of the board
-# x, y: see description for square
-# text: text in the label
-# Last Modified: 03/07/2021
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 class Label(RectangleSprite):
         def __init__(self, x, y, text):
             super().__init__(width=square_size, height=square_size, x = board_x + x * square_size, y = board_y + y * square_size, 
@@ -82,13 +106,22 @@ class Label(RectangleSprite):
 
 # class for the sprites of the border of the board
 # Last Modified: 03/07/2021
+# Last Modified by: Arkleseisure
 class Border(RectangleSprite):
     def __init__(self):
         super().__init__(width = 10 * square_size, height = 10 * square_size, x = board_x - square_size, colour=border_colour)
 
 
-# class for any buttons beside the board
-# Last Modified: 03/07/2021
+'''
+Class for any buttons beside the board
+text: text in the button
+x, y: same as for the square class
+width, height: width and height of the button
+colour: colour of the background of the button, RGB 0-255
+
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 class Button(RectangleSprite):
     def __init__(self, text, x, y, width=3*square_size//2, height=3*square_size//4, colour=[100, 100, 100]):
         super().__init__(width=width, height=height, x=board_x + x * square_size, y=board_y + y * square_size, colour=colour, text=text)
@@ -98,12 +131,18 @@ class Button(RectangleSprite):
 
     # returns True if the given x, y coordinates are within the button, False if not
     # Last Modified 03/07/2021
+    # Last Modified by: Arkleseisure
     def is_clicked(self, x, y):
         return self.rect.x < x < self.rect.x + self.width and self.rect.y < y < self.rect.y + self.height
 
 
-# initializes the background group, which is used to display the board, its borders and the column and row labels beside the board.
-# Last Modified: 01/07/2021
+'''
+initializes the background group, which is used to display the board, its borders and the column and row labels beside the board.
+col: colour from whose perspective the user is looking, 0 = white, 1 = black
+
+Last Modified: 01/07/2021
+Last Modified by: Arkleseisure
+'''
 def initialize_pygame_stuff(col):
     # initializes the group
     background = pygame.sprite.Group()
@@ -146,19 +185,37 @@ def initialize_pygame_stuff(col):
     return background, buttons
 
 
-# draws the current position to the screen 
-# Last Modified: 03/07/2021
+'''
+Draws the current position to the screen 
+colour: draw the board from white's perspective (0) or black's perspective (1)
+background: pygame sprite group holding the sprites for the background (i.e, the board, borders, 
+            background colour and labels beside the board)
+buttons: pygame sprite group holding the sprites for the buttons beside the board
+last_move: the last move that was played, encoded as 2 bitboards, one for the starting position 
+           and one for the end, and a flag, which encodes additional information such as the piece moved
+current_move: bitboard containing the square encoded by any move which is currently being played, 
+              for instance when the player has clicked on a piece but hasn't moved it yet.
+
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 def draw_board(colour, background, buttons, board, last_move, current_move):
     background.draw(screen)
-    draw_highlights(screen, last_move, current_move, colour)
-    draw_pieces(screen, board, colour)
+    draw_highlights(last_move, current_move, colour)
+    draw_pieces(board, colour)
     buttons.draw(screen)
 
     pygame.display.flip()
         
 
-# gets the square the human player has clicked on
-# Last Modified: 02/07/2021
+'''
+Waits for the human player to click on a square or button and then returns the result
+colour: perspective of board, 0 (white) or 1 (black)
+buttons: sprite group containing all buttons beside the board.
+
+Last Modified: 02/07/2021
+Last Modified by: Arkleseisure
+'''
 def get_square(colour, buttons):
     # loops while the player hasn't clicked on a valid square
     correct_square = False
@@ -186,10 +243,15 @@ def get_square(colour, buttons):
         return 2 ** (x + 8 * (7 - y)), ''
     return 2 ** (7 - x + 8 * y ), ''
 
+'''
+Draws the images of the pieces to the screen
+board: 12 * bitboards, one for each piece type
+colour: perspective from which to draw the pieces, white (0) or black (1)
 
-# draws the images of the pieces to the screen
-# Last Modified: 01/07/2021
-def draw_pieces(screen, board, colour):
+Last Modified: 01/07/2021
+Last Modified by: Arkleseisure
+'''
+def draw_pieces(board, colour):
     image_names = ['Pw', 'Nw', 'Bw', 'Rw', 'Qw', 'Kw', 'Pb', 'Nb', 'Bb', 'Rb', 'Qb', 'Kb']
 
     # loops through each piece type
@@ -221,10 +283,16 @@ def draw_pieces(screen, board, colour):
             # does the actual drawing of pieces
             screen.blit(piece_type_image, (x, y))
 
+'''
+Draws the highlights onto the board
+last_move: 2 * bitboard and 1 flag, refers to the last move to be played
+current_move: bitboard encoding the position of the current click, for instance just after the human player has just clicked to select a piece
+colour: 0 (white) or 1 (black), refers to the perspective from which the board is being viewed
 
-# Draws the highlights onto the board
-# Last Modified: 03/07/2021
-def draw_highlights(screen, last_move, current_move, colour):
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
+def draw_highlights(last_move, current_move, colour):
     highlights = pygame.sprite.Group()
 
     # adds the highlights for the last move
@@ -266,3 +334,12 @@ def draw_highlights(screen, last_move, current_move, colour):
 
     # draws the highlights to the screen
     highlights.draw(screen)
+
+# function to print out the individual bitboards, mainly for debuggin purposes
+# Last Modified: 11/8/2021
+# Last Modified by: Arkleseisure
+def print_board(board):
+    for i in range(len(board)):
+        for j in range(8):
+            print(bin(board[i] + 2 ** 64)[8 * (j + 1) + 2: 8 * j + 2: -1])
+        print()
