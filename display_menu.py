@@ -1,11 +1,15 @@
-﻿from draw_board import screen, screen_width, screen_height, RectangleSprite
+from draw_board import screen, screen_width, screen_height, RectangleSprite
 import pygame
 
-# class for the buttons used to display the menu
-# num = number of buttons being drawn
-# y = some int from 0 to num - 1, and states that this button is the yth counting from the top
-# text = text displayed on the button
-# Last Modified: 03/07/2021
+'''
+class for the buttons used to display the menu
+num = number of buttons being drawn (used to divide the screen vertically into equivalent 
+y = some int from 0 to num - 1, and states that this button is the yth counting from the top
+text = text displayed on the button
+
+Last Modified: 03/07/2021
+Last Modified by: Arkleseisure
+'''
 class Button(RectangleSprite):
     def __init__(self, y, num, text):
         # font details
@@ -20,9 +24,15 @@ class Button(RectangleSprite):
         super().__init__(width=button_width, height=button_height, x=0, y=y*button_height, 
                          text=text, font=font, font_size=font_size, font_colour=font_colour, bold=True)
 
+'''
+Displays a menu page, given a list of options
+options = list of options to be displayed
 
-# displays a menu page, given a list of options
-# Last Modified: 02/07/2021
+Note: if this function is edited, so must the get_option function, so that it still returns the correct results
+
+Last Modified: 02/07/2021
+Last Modified by: Arkleseisure
+'''
 def display_menu(options):
     buttons = pygame.sprite.Group()
 
@@ -38,6 +48,7 @@ def display_menu(options):
 
 # takes in a list of options and returns the option which the user has clicked on
 # Last Modified: 02/07/2021
+# Last Modified by: Arkleseisure
 def get_option(options):
     n = len(options)
     option_chosen = False
@@ -52,5 +63,3 @@ def get_option(options):
                 option_chosen = True
 
     return y
-
-    
