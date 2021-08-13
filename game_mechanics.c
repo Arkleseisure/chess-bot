@@ -7,7 +7,7 @@
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is version 84.\n");
+	printf(" This is version 103.\n");
 }
 
 
@@ -25,7 +25,8 @@ struct Piece {
 
 
 // functions for which the code hasn't yet been written
-bool in_check(unsigned long long* board, int to_play) {
+// checks whether the square held by loc is attacked
+bool in_check(unsigned long long* board, int to_play, unsigned long long loc) {
 	return false;
 }
 
@@ -35,9 +36,11 @@ bool in_check(unsigned long long* board, int to_play) {
 int rank(unsigned long long loc) {
 	int i = 0;
 	int rank_no = 0;
+	unsigned long long loc_shift = loc >> 8;
 
-	while (loc >> ((rank_no + 1) * 8) != 0) {
+	while (loc_shift != 0 && loc_shift < loc) {
 		rank_no++;
+		loc_shift >>= 8;
 	}
 	return rank_no;
 }
@@ -198,12 +201,12 @@ int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pi
 		if (loc << knight_shifts[i] != 0 && abs((piece_file + knight_shifts[i]) % 8 - piece_file) <= 2) {
 			// captures
 			if (((loc << knight_shifts[i]) & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, loc << knight_shifts[i], 4, 1 + 6 * to_play, index);
+				add_move(moves[num_moves], loc, loc << knight_shifts[i], 4, 1 + 6 * (unsigned long long)to_play, index);
 				num_moves++;
 			}
 			// normal moves
 			else if (((loc << knight_shifts[i]) & same_pieces) == 0) {
-				add_move(moves[num_moves], loc, loc << knight_shifts[i], 0, 1 + 6 * to_play, index);
+				add_move(moves[num_moves], loc, loc << knight_shifts[i], 0, 1 + 6 * (unsigned long long)to_play, index);
 				num_moves++;
 			}
 		}
@@ -212,12 +215,12 @@ int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pi
 		if (loc >> knight_shifts[i] != 0 && abs((knight_shifts[i] + (7 - piece_file)) % 8 - (7 - piece_file)) <= 2) {
 			// captures
 			if (((loc >> knight_shifts[i]) & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 4, 1 + 6 * to_play, index);
+				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 4, 1 + 6 * (unsigned long long)to_play, index);
 				num_moves++;
 			}
 			// normal moves
 			else if (((loc >> knight_shifts[i]) & same_pieces) == 0) {
-				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 0, 1 + 6 * to_play, index);
+				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 0, 1 + 6 * (unsigned long long)to_play, index);
 				num_moves++;
 			}
 		}
@@ -231,11 +234,36 @@ same_pieces: bitboard containing the pieces of the same colour as the bishop
 other_pieces: bitboard containing the pieces of the opposite colour as the bishop
 loc: bitboard with the location of the bishop
 moves: array to put the moves found into
-Last Modified: 11/8/2021
+Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
 int get_bishop_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index, int to_play) {
+	int i;
+	int j;
 	int num_moves = 0;
+	int piece_rank = rank(loc);
+	int piece_shifts[] = { 7, 9 };
+	int directions[] = { -1, 1 };
+	unsigned long long new_position;
+
+	// loops through each of the four directions in which it can move
+	for (i = 0; i < 4; i++) {
+		for (j = 1; j < 8; j++) {
+			new_position = shift_bitboard(loc, piece_shifts[i % 2] * j, directions[i / 2]);
+			// checks the move doesn't take the piece off the side of the board or onto one of their own pieces
+			if (new_position == 0 || (new_position & same_pieces) != 0 || abs(rank(new_position) - piece_rank) != j) {
+				break;
+			}
+			// if the move is a capture, it adds that move and then breaks to the next loop
+			else if ((new_position & other_pieces) != 0) {
+				add_move(moves[num_moves], loc, new_position, 4, 2 + 6 * (unsigned long long)to_play, index);
+				num_moves++;
+				break;
+			}
+			add_move(moves[num_moves], loc, new_position, 0, 2 + 6 * (unsigned long long)to_play, index);
+			num_moves++;
+		}
+	}
 	return num_moves;
 }
 
@@ -245,11 +273,36 @@ same_pieces: bitboard containing the pieces of the same colour as the rook
 other_pieces: bitboard containing the pieces of the opposite colour as the rook
 loc: bitboard with the location of the rook
 moves: array to put the moves found into
-Last Modified: 11/8/2021
+Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
 int get_rook_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index, int to_play) {
+	int i;
+	int j;
 	int num_moves = 0;
+	int piece_rank = rank(loc);
+	int piece_shifts[] = { 1, 8 };
+	int directions[] = { -1, 1 };
+	unsigned long long new_position;
+
+	// loops through each of the four directions in which it can move
+	for (i = 0; i < 4; i++) {
+		for (j = 1; j < 8; j++) {
+			new_position = shift_bitboard(loc, piece_shifts[i % 2] * j, directions[i / 2]);
+			// checks the move doesn't take the piece off the side of the board or onto one of their own pieces
+			if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 2] == 1 && rank(new_position) != piece_rank)) {
+				break;
+			}
+			// if the move is a capture, it adds that move and then breaks to the next loop
+			else if ((new_position & other_pieces) != 0) {
+				add_move(moves[num_moves], loc, new_position, 4, 3 + 6 * (unsigned long long)to_play, index);
+				num_moves++;
+				break;
+			}
+			add_move(moves[num_moves], loc, new_position, 0, 3 + 6 * (unsigned long long)to_play, index);
+			num_moves++;
+		}
+	}
 	return num_moves;
 }
 
@@ -259,11 +312,42 @@ same_pieces: bitboard containing the pieces of the same colour as the queen
 other_pieces: bitboard containing the pieces of the opposite colour as the queen
 loc: bitboard with the location of the queen
 moves: array to put the moves found into
-Last Modified: 11/8/2021
+Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
 int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index, int to_play) {
+	int i;
+	int j;
 	int num_moves = 0;
+	int piece_rank = rank(loc);
+	int piece_shifts[] = { 1, 7, 8, 9 };
+	int directions[] = { -1, 1 };
+	unsigned long long new_position;
+
+	// loops through each of the eight directions in which it can move
+	for (i = 0; i < 8; i++) {
+		// loops though moving one square at a time
+		for (j = 1; j < 8; j++) {
+			new_position = shift_bitboard(loc, piece_shifts[i % 4] * j, directions[i / 4]);
+			// checks the move doesn't take the piece off the side of the board or onto one of their own pieces
+			// first checks it hasn't gone off the top or bottom of the board
+			// second checks it hasn't landed on a friendly piece
+			// third checks it hasn't moved horizontally off the side of the board
+			// fourth checks it hasn't moved diagonally off the side of the board (7 and 9 are the shifts for diagonal moves)
+			if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 4] == 1 && rank(new_position) != piece_rank) || 
+					((piece_shifts[i % 4] == 7 || piece_shifts[i % 4] == 9) && abs(rank(new_position) - piece_rank) != j)) {
+				break;
+			}
+			// if the move is a capture, it adds that move and then breaks to the next loop
+			else if ((new_position & other_pieces) != 0) {
+				add_move(moves[num_moves], loc, new_position, 4, 4 + 6 * (unsigned long long)to_play, index);
+				num_moves++;
+				break;
+			}
+			add_move(moves[num_moves], loc, new_position, 0, 4 + 6 * (unsigned long long)to_play, index);
+			num_moves++;
+		}
+	}
 	return num_moves;
 }
 
@@ -274,11 +358,52 @@ other_pieces: bitboard containing the pieces of the opposite colour as the king
 loc: bitboard with the location of the king
 moves: array to put the moves found into
 castling: 4 bits representing legality of castling for each side, first two kingside/queenside for black, second two kingside/queenside for white
-Last Modified: 11/8/2021
+Last Modified: 13/8/2021
 Last Modified by: Arkleseisure
 */
-int get_king_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index, int to_play, int castling) {
+int get_king_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index, int to_play, int castling, unsigned long long* board) {
+	int i;
 	int num_moves = 0;
+	int piece_rank = rank(loc);
+	int piece_file = file(loc);
+	int piece_shifts[] = { 1, 7, 8, 9 };
+	int directions[] = { -1, 1 };
+	unsigned long long new_position;
+
+	// loops through each of the eight directions in which it can move
+	for (i = 0; i < 8; i++) {
+		new_position = shift_bitboard(loc, piece_shifts[i % 4], directions[i / 4]);
+		// checks the move doesn't take the piece off the side of the board or onto one of their own pieces
+		// first checks it hasn't gone off the top or bottom of the board
+		// second checks it hasn't landed on a friendly piece
+		// third checks it hasn't moved horizontally off the side of the board
+		// fourth checks it hasn't moved diagonally off the side of the board (7 and 9 are the shifts for diagonal moves)
+		if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 4] == 1 && rank(new_position) != piece_rank) ||
+			((piece_shifts[i % 4] == 7 || piece_shifts[i % 4] == 9) && abs(rank(new_position) - piece_rank) != 1)) {
+		}
+		// if the move is a capture, it adds that move and then breaks to the next loop
+		else if ((new_position & other_pieces) != 0) {
+			add_move(moves[num_moves], loc, new_position, 4, 5 + 6 * (unsigned long long)to_play, index);
+			num_moves++;
+		}
+		else {
+			add_move(moves[num_moves], loc, new_position, 0, 5 + 6 * (unsigned long long)to_play, index);
+			num_moves++;
+		}
+	}
+
+	// castling kingside (checks whether the king or rook have moved (held in the castling variable), then verifies the castle would not be moving through check, 
+	// then that it would not be moving through pieces... 96 is 01100000, so represents the squares which must be free for the move to be made)
+	if (((castling & (2 + 6 * to_play)) != 0) && !(in_check(board, to_play, loc << 1)) && (((other_pieces ^ same_pieces) & ((unsigned long long)96 << (56 * (unsigned long long)to_play))) == 0)) {
+		add_move(moves[num_moves], loc, loc << 2, 2, 5 + 6 * (unsigned long long)to_play, index);
+		num_moves++;
+	}
+	// castling queenside
+	// generally the same as kingside, but with 00001110 being 14 representing the squares which need to be free
+	if ((castling & (1 + 3 * to_play)) != 0 && !(in_check(board, to_play, loc >> 1)) && ((other_pieces ^ same_pieces) & ((unsigned long long)14 << (56 * (unsigned long long)to_play))) == 0) {
+		add_move(moves[num_moves], loc, loc >> 2, 3, 5 + 6 * (unsigned long long)to_play, index);
+		num_moves++;
+	}
 	return num_moves;
 }
 
@@ -483,7 +608,7 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 				piece_moves = get_queen_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
 				break;
 			case 5:
-				piece_moves = get_king_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, castling);
+				piece_moves = get_king_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, castling, board);
 				break;
 			}
 
@@ -492,8 +617,8 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 				// move is applied to the position efficiently (factors which don't change whether the resulting position is check aren't applied)
 				captured = quick_apply(board, piece_legal_moves[j], to_play);
 
-				// if the resulting position is not check, the move is added to the array of legal moves.
-				if (in_check(board, 1 - to_play) == false) {
+				// if the resulting position is not check, the move is added to the array of legal moves. (the position passed in is that of the king of the relevant colour)
+				if (!(in_check(board, 1 - to_play, piece_list[12 + 16 * to_play].loc))) {
 					// the index and piece are already included within the flag so we don't need to add them.
 					add_move(legal_moves[num_moves], piece_legal_moves[j][0], piece_legal_moves[j][1], piece_legal_moves[j][2], 0, 0);
 					num_moves++;
