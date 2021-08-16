@@ -7,7 +7,7 @@
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is version 103.\n");
+	printf(" This is version 104.\n");
 }
 
 
@@ -22,13 +22,6 @@ struct Piece {
 	// whether this piece has been captured, true or false
 	bool captured;
 };
-
-
-// functions for which the code hasn't yet been written
-// checks whether the square held by loc is attacked
-bool in_check(unsigned long long* board, int to_play, unsigned long long loc) {
-	return false;
-}
 
 // returns the rank given by a single bit on a bitboard (or if there is more than one bit, the rank of the bit with the highest rank)
 // Last Modified: 10/8/2021
@@ -63,6 +56,13 @@ int file(unsigned long long loc) {
 		mask <<= 1;
 	}
 	return file_no;
+}
+
+
+// functions for which the code hasn't yet been written
+// checks whether the square held by loc is attacked
+bool in_check(unsigned long long* board, int to_play, unsigned long long loc) {
+	return false;
 }
 
 /*
@@ -554,7 +554,8 @@ void quick_undo(unsigned long long* board, unsigned long long* move, int to_play
 
 /*
 Function which returns the legal moves in a position.
-All inputs are the same as for the apply function, except that the castling and to_play variables don't have to be modified and so can be passed normally
+All inputs are the same as for the apply function, except that the castling and to_play variables don't have to be modified and so can be passed normally, and 
+the added legal_moves array to put the moves in.
 
 Last Modified: 10/08/2021
 Last Modified by: Arkleseisure
@@ -589,7 +590,7 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 
 	// loops through each of the pieces for the side to play, to generate the legal moves for each of them.
 	for (i = to_play * 16; i < 16 + to_play * 16; i++) {
-		if (piece_list[i].captured == false) {
+		if (!piece_list[i].captured) {
 			// generates the legal moves for that piece depending on its piece type.
 			switch (piece_list[i].type % 6) {
 			case 0:
@@ -633,4 +634,199 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 	// returns the final number of legal moves, so that the code only uses the part of the legal_moves list which holds actual moves (as it is declared 
 	// in advance, it by default will have a size significantly larger than the number of moves it will usually return)
 	return num_moves;
+}
+
+
+
+int zobrist_hash(board, to_play, last_move) {
+
+}
+
+/*
+Looks for a draw by lack of material, by looking through the piece list and checking whether there are enough pieces to carry on playing
+inputs: piece_list: List of structs of each piece, holding piece location, type and whether it has been captured.
+
+Last Modified: 17/8/2021
+Last Modified by: Arkleseisure
+UNTESTED
+*/
+bool draw_by_lack_of_material(struct Piece* piece_list) {
+	int i;
+	int num_minor_pieces[] = { 0, 0 };
+
+	for (i = 0; i < 32; i++) {
+		if (!piece_list[i].captured) {
+			switch (piece_list[i].type % 6) {
+				// a pawn is always enough material to win
+			case 0:
+				return false;
+				// a knight will be enough to win if paired with a bishop
+			case 1:
+				num_minor_pieces[piece_list[i].type / 6]++;
+				break;
+				// a bishop will be enough to win if it is paired either with a knight or a bishop
+			case 2:
+				if (num_minor_pieces[piece_list[i].type / 6] > 0) {
+					return false;
+				}
+				num_minor_pieces[piece_list[i].type / 6]++;
+				break;
+				// a rook is always enough to win
+			case 3:
+				return false;
+				// a queen is always enough to win
+			case 4:
+				return false;
+			default:
+				break;
+			}
+		}
+	}
+}
+
+/*
+Looks to see if there is checkmate or stalemate... First checks that there are no legal moves, then checks whether it is check or not
+INPUTS:
+board: same as usual, 12 x bitboards documented in play_game
+to_play: 0 (white is the one being mated) or 1 (black is the one being mated)
+last_move: last move to be played, using the standard notation used in play_game
+piece_list: array of 32 pieces, each one containing the piece type, their location and whether or not they have been captured yet.
+
+Last Modified: 17/8/2021
+Last Modified by: Arkleseisure
+
+UNTESTED
+*/
+int look_for_mates(unsigned long long* board, int to_play, unsigned long long* last_move, struct Piece* piece_list) {
+	int i;
+	int j;
+
+	// number of pseudolegal moves found for each piece when its moves are generated
+	int piece_moves = 0;
+	// holds the piece which has been captured when the move is applied to look for check
+	int captured;
+
+	// holds the pseudolegal moves for one piece
+	unsigned long long piece_legal_moves[28][3];
+
+	// precalculated bitboards with the locations of each of the pieces for each colour
+	unsigned long long other_pieces = 0;
+	unsigned long long same_pieces = 0;
+
+
+	// the first 6 bitboards in board hold the white pieces, the next 6 black... These store this shift for white and for black so it doesn't have to be calculated every time.
+	int p = 6 * to_play;
+	int other_p = 6 * (1 - to_play);
+
+	for (i = 0; i < 6; i++) {
+		other_pieces ^= board[i + other_p];
+		same_pieces ^= board[i + p];
+	}
+
+	// tries to find a single legal move for the player. If this is found, it is neither checkmate nor stalemate
+	for (i = 16 * to_play; i < 16 * to_play + 16; i++) {
+		if (!piece_list[i].captured) {
+			// generates the legal moves for that piece depending on its piece type.
+			switch (piece_list[i].type % 6) {
+			case 0:
+				piece_moves = get_pawn_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, last_move);
+				break;
+			case 1:
+				piece_moves = get_knight_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				break;
+			case 2:
+				piece_moves = get_bishop_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				break;
+			case 3:
+				piece_moves = get_rook_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				break;
+			case 4:
+				piece_moves = get_queen_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				break;
+			case 5:
+				piece_moves = get_king_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, 0, board);
+				break;
+			}
+
+			// loops through each of the moves generated to see if it's in check.
+			for (j = 0; j < piece_moves; j++) {
+				// move is applied to the position efficiently (factors which don't change whether the resulting position is check aren't applied)
+				captured = quick_apply(board, piece_legal_moves[j], to_play);
+
+				// if the resulting position is not check, then it is neither checkmate nor stalemate
+				if (!(in_check(board, 1 - to_play, piece_list[12 + 16 * to_play].loc))) {
+					quick_undo(board, piece_legal_moves[j], to_play, captured);
+					return 0;
+				}
+
+				// the move is undone from the position
+				quick_undo(board, piece_legal_moves[j], to_play, captured);
+			}
+		}
+	}
+
+	// if there are no moves and it is check, then it is checkmate, if not then it is stalemate
+	if (in_check(board, to_play, piece_list[12 + 16 * to_play].loc)) {
+		return 1;
+	}
+	return 2;
+}
+
+/*
+Function which determines whether or not the game is in a terminal state... Returns 0 if a win for black, 1 if draw, 2 if win for white and 3 if the position is not terminal
+INPUTS:
+board: the usual 12 * bitboards described in play_game
+to_play: 0 (black played last and we are checking if white is mated) or 1 (white played last and we're checking if black is being mated)
+piece_list: array of 32 pieces, each one containing the piece type, their location and whether or not they have been captured yet.
+ply_counter: number of ply since the 50 move rule has been reset (1 ply = 1 move for 1 player)
+past_hash_list: array of the hashes of past positions, to check for repetition
+hash: hash of current position
+
+Last Modified: 17/8/2021
+Last Modified by: Arkleseisure
+
+UNTESTED
+*/
+int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, int ply_counter, int* past_hash_list, int hash, int castling, unsigned long long* last_move) {
+	int i;
+	int repetitions = 0;
+	int mates;
+
+	// checks if the 50 move rule has been reached
+	if (ply_counter >= 100) {
+		return 1;
+	}
+	// looks for repetitions... After the 50 move rule has been reset, no repetitions of positions before this point can occur, 
+	// and threefold repetition can only occur at least 3 moves after the reset, so we check that the move counter is at least 4 for efficiency purposes
+	else if (ply_counter > 4) {
+		// it is only a repetition if it is the same player to play, and so we only look at the moves where it is this player to play
+		for (i = ply_counter % 2; i < ply_counter; i += 2) {
+			// increments the repetition counter if this position is a repetition of the past board
+			if (hash == past_hash_list[i]) {
+				repetitions++;
+				// if this position has occured 2 times in the past then this is the third repetition and so it is a draw
+				if (repetitions == 2) {
+					return 1;
+				}
+			}
+		}
+	}
+
+	// gets draw by lack of material
+	if (draw_by_lack_of_material(piece_list)) {
+		return 1;
+	}
+
+	// look for mates function returns 0 by default, 1 if checkmate and 2 if stalemate
+	mates = look_for_mates(board, to_play, last_move, piece_list);
+	switch (mates) {
+	case 0:
+		return 3;
+	case 1:
+		return 2 * to_play;
+	case 2:
+		return 1;
+	}
+
+	return 3;
 }
