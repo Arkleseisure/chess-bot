@@ -1,6 +1,6 @@
 import pygame
 from draw_board import initialize_pygame_stuff, draw_board, get_square, print_board
-from c_interface import apply, initiate_piece_list, legal_moves
+from c_interface import apply, initiate_piece_list, legal_moves, generate_zobrist_stuff
 import Bits_and_pieces as BaP
 
 # Plays through a full game of chess.
@@ -55,6 +55,15 @@ def initialize_game(colour):
     00000000
     
     It is generally easier to use hex
+
+    The bitboards are ordered like this:
+    0 is white pawns
+    1 is white knights
+    2 is white bishops
+    3 is white rooks
+    4 is white queens
+    5 is the white king
+    Then 6 - 11 are in the same order but black
 
     This means that the value added by each square is equal to 2 ^ square number, where the square number is given by 
     this grid (as viewed from white's perspective):
@@ -136,10 +145,12 @@ def initialize_game(colour):
 
 
 # function used until all the functions in play_game are coded, allows us to test what we've done so far
-# Last Modified: 04/07/2021
+# Last Modified: 19/8/2021
 def do_test_stuff(colour, ai):
     background, buttons, board, last_move, castling, piece_list = initialize_game(colour)
     to_play = 0
+
+    hash, zobrist_numbers, past_hash_list = generate_zobrist_stuff(board)
 
     quit = False
     square_selected = False
