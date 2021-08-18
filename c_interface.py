@@ -1,6 +1,8 @@
 from ctypes import CDLL, c_ulonglong, c_int, c_char, Structure, c_bool
 import sys
 import Bits_and_pieces as BaP
+import random
+import time
 
 # imports the c libraries
 game_mechanics_lib_path = 'theories/game_mechanics_%s.so' % (sys.platform)
@@ -144,3 +146,53 @@ def initiate_piece_list():
 		piece.captured = False
 
 	return piece_list
+
+'''
+Generates pseudorandom numbers used for zobrist hashes (an efficient way to hash a board position), 
+as well as the hash of the initial position and the list of past hashes, with the initial position included
+
+Last Modified: 19/8/2021
+Last Modified by: Arkleseisure
+'''
+def generate_zobrist_stuff(board, castling, to_play, last_move):
+	random.seed(1)
+
+	# adds a 32 bit hash number for each piece on each square (12 * 64), castling rights (16), en-passant file (8) and black to move (1)
+	# the values are ordered by piece as in the board, then by square number (e.g zobrist_numbers[0] is for a white pawn on a1, 1 is on a2, ... 64 is a white knight on a1, ...)
+	# castling rights are ordered by binary value as held in the castling variable (4 bits: kingside/queenside for black (8/4 in terms of int value) then kingside/queenside for white (2/1))
+	zobrist_numbers = []
+	for i in range(793):
+		zobrist_numbers.append(random.getrandbits(32))
+
+	initial_hash = 0
+	# the zobrist hash is made by xoring the zobrist numbers corresponding to each item of the game
+	# adds the pieces from the board
+	for i in range(len(board)):
+		binary_representation = bin(board[i])
+		index = 0
+		while (index != -1):
+			index = binary_representation.find('1', index+1)
+			if index != -1:
+				initial_hash ^= zobrist_numbers[64 * i + len(binary_representation) - index - 1]
+
+	# adds the castling legality
+	initial_hash ^= zobrist_numbers[64 * 12 + castling]
+
+	# adds en-passant
+	# checks if the last move was a double pawn move
+	if last_move[-1] ^ 15 == 1:
+		last_move_file = game_mech.file(last_move[1])
+		
+		# checks if there is a pawn on the squares next to the last move played
+		if ((last_move[1] >> 1) & board[6 * to_play] != 0 and last_move_file > 0) or \
+			((last_move[1] << 1) & board[6 * to_play] != 0 and last_move_file < 7):
+			initial_hash ^= zobrist_numbers[64 * 12 + 16 + last_move_file]
+
+	# adds person to move
+	if to_play == 1:
+		initial_hash ^= zobrist_numbers[64 * 12 + 16 + 8]
+
+	past_hash_list = (c_uint * 100)()
+	past_hash_list[0] = initial_hash
+
+	return initial_hash, zobrist_numbers, past_hash_list
