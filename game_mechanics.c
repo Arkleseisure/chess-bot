@@ -637,11 +637,6 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 }
 
 
-
-int zobrist_hash(board, to_play, last_move) {
-
-}
-
 /*
 Looks for a draw by lack of material, by looking through the piece list and checking whether there are enough pieces to carry on playing
 inputs: piece_list: List of structs of each piece, holding piece location, type and whether it has been captured.
@@ -780,14 +775,15 @@ to_play: 0 (black played last and we are checking if white is mated) or 1 (white
 piece_list: array of 32 pieces, each one containing the piece type, their location and whether or not they have been captured yet.
 ply_counter: number of ply since the 50 move rule has been reset (1 ply = 1 move for 1 player)
 past_hash_list: array of the hashes of past positions, to check for repetition
-hash: hash of current position
+hash: zobrist hash of current position
+last_move: last move to be played, held as 2 bitboards and a flag, as explained in play_game
 
 Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
 
 UNTESTED
 */
-int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, int ply_counter, int* past_hash_list, int hash, int castling, unsigned long long* last_move) {
+int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, int ply_counter, int* past_hash_list, int hash, unsigned long long* last_move) {
 	int i;
 	int repetitions = 0;
 	int mates;
