@@ -140,10 +140,10 @@ class Button(RectangleSprite):
 initializes the background group, which is used to display the board, its borders and the column and row labels beside the board.
 col: colour from whose perspective the user is looking, 0 = white, 1 = black
 
-Last Modified: 01/07/2021
+Last Modified: 01/09/2021
 Last Modified by: Arkleseisure
 '''
-def initialize_pygame_stuff(col):
+def initialize_pygame_stuff(to_play):
     # initializes the group
     background = pygame.sprite.Group()
 
@@ -169,8 +169,8 @@ def initialize_pygame_stuff(col):
 
     # adds the labels to the background group
     for i in range(8):
-        # labels for if the board is viewed from white's perspective (col=0), or black's perspective (col=1)
-        if col == 0:
+        # labels for if the board is viewed from white's perspective (to_play=0), or black's perspective (to_play=1)
+        if to_play == 0:
             new_col_label = Label(x=i, y=8, text=chr(ord('A') + i))
             new_row_label = Label(x=-1, y=7-i, text=str(i + 1))
         else:
