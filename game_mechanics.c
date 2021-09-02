@@ -457,7 +457,7 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 	for (int i = 0; i < 3; i++) {
 		last_move[i] = move[i];
 	}
-	return capture_type
+	return capture_type;
 }
 
 /*
@@ -885,7 +885,7 @@ void perft_all(unsigned long long* board, unsigned long long* last_move, int cas
 	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
 
 	for (i = 0; i < num_moves; i++){
-		captured = apply(board, moves[i], extras, last_move, piece_list);
+		captured = apply(board, moves[i], extras, last_move, piece_list, past_hash_list);
 		perft_all(board, last_move, extras[0], piece_list, extras[1], extras[2], past_hash_list, extras[3], depth - 1, answers);
 		unapply(board, moves[i], extras, previous_last_move, piece_list, captured);
 	}
@@ -922,7 +922,7 @@ void perft_nodes(unsigned long long* board, unsigned long long* last_move, int c
 	}
 
 	for (i = 0; i < num_moves; i++) {
-		captured = apply(board, moves[i], extras, last_move, piece_list);
+		captured = apply(board, moves[i], extras, last_move, piece_list, past_hash_list);
 		perft_nodes(board, last_move, extras[0], piece_list, extras[1], extras[2], past_hash_list, extras[3], depth - 1, answers);
 		unapply(board, moves[i], extras, previous_last_move, piece_list, captured);
 	}
