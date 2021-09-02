@@ -3,11 +3,11 @@
 #include <stdbool.h>
 
 // Function to confirm that the file is being imported properly
-// Last Modified: 10/8/2021
+// Last Modified: 1/9/2021
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is version 104.\n");
+	printf(" This is version 106.\n");
 }
 
 
@@ -65,6 +65,10 @@ bool in_check(unsigned long long* board, int to_play, unsigned long long loc) {
 	return false;
 }
 
+void unapply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* previous_last_move, struct Piece* piece_list, int captured) {
+
+}
+
 /*
 Function to add a move to an array
 moves: array the move should be added to
@@ -109,12 +113,12 @@ to_play: 0 (white) or 1 (black) to play
 loc: bitboard with the location of the pawn
 moves: array to put the moves found into
 last_move: last move to have been played, used to check for possibility of en passant
-index: 
+index:
 Last Modified: 10/8/2021
 Last Modified by: Arkleseisure
 */
 int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], unsigned long long index,
-					int to_play, unsigned long long* last_move) {
+	int to_play, unsigned long long* last_move) {
 	int i;
 	int j;
 	int num_moves = 0;
@@ -334,8 +338,8 @@ int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pie
 			// second checks it hasn't landed on a friendly piece
 			// third checks it hasn't moved horizontally off the side of the board
 			// fourth checks it hasn't moved diagonally off the side of the board (7 and 9 are the shifts for diagonal moves)
-			if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 4] == 1 && rank(new_position) != piece_rank) || 
-					((piece_shifts[i % 4] == 7 || piece_shifts[i % 4] == 9) && abs(rank(new_position) - piece_rank) != j)) {
+			if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 4] == 1 && rank(new_position) != piece_rank) ||
+				((piece_shifts[i % 4] == 7 || piece_shifts[i % 4] == 9) && abs(rank(new_position) - piece_rank) != j)) {
 				break;
 			}
 			// if the move is a capture, it adds that move and then breaks to the next loop
@@ -417,17 +421,19 @@ last_move: last move to be played. This is not used in the function, but it does
 			returned automatically
 Last Modified: 11/8/2021
 Last Modified by: Arkleseisure
-
 INCOMPLETE
 */
-void apply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* last_move, struct Piece* piece_list) {
+int apply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* last_move, struct Piece* piece_list, int* past_hash_list) {
 	// the piece which moves is encoded within the flag of the move
 	int i;
-	int index = move[2] >> 8;
+	int index = (int)move[2] >> 8;
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
 	int castling = extras[0];
 	int to_play = extras[1];
+	int hash = extras[2];
+	int ply_counter = extras[3];
+	int capture_type = 12;
 
 	// applies the move to the bitboard for that piece
 	board[piece] ^= move[0] | move[1];
@@ -440,6 +446,7 @@ void apply(unsigned long long* board, unsigned long long* move, int* extras, uns
 	for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 16; i++) {
 		if ((piece_list[i].loc & move[1]) != 0) {
 			piece_list[i].captured = true;
+			capture_type = piece_list[i].type;
 		}
 	}
 
@@ -450,12 +457,12 @@ void apply(unsigned long long* board, unsigned long long* move, int* extras, uns
 	for (int i = 0; i < 3; i++) {
 		last_move[i] = move[i];
 	}
+	return capture_type
 }
 
 /*
 Function which applies the critical changes to the position such that they can be undone quickly, making doing and undoing single moves more efficient
 board and move take the same form as they do in apply. Note: does not include pawn promotion
-
 Last Modified: 11/08/2021
 Last Modified by: Arkleseisure
 */
@@ -506,16 +513,14 @@ int quick_apply(unsigned long long* board, unsigned long long* move, int to_play
 	return captured;
 }
 
-
 /*
 Function which undoes the changes made by the quick_apply function.
-
 Last Modified: 10/08/2021
 Last Modified by: Arkleseisure
 */
 void quick_undo(unsigned long long* board, unsigned long long* move, int to_play, int captured) {
 	// breaks the last part of the move down into the index (of the piece moving in the piece_list), the piece type and the flag (all documented in play_game)
-	int index = move[2] >> 8;
+	int index = (int)move[2] >> 8;
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
 
@@ -554,9 +559,8 @@ void quick_undo(unsigned long long* board, unsigned long long* move, int to_play
 
 /*
 Function which returns the legal moves in a position.
-All inputs are the same as for the apply function, except that the castling and to_play variables don't have to be modified and so can be passed normally, and 
+All inputs are the same as for the apply function, except that the castling and to_play variables don't have to be modified and so can be passed normally, and
 the added legal_moves array to put the moves in.
-
 Last Modified: 10/08/2021
 Last Modified by: Arkleseisure
 */
@@ -619,7 +623,7 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 				captured = quick_apply(board, piece_legal_moves[j], to_play);
 
 				// if the resulting position is not check, the move is added to the array of legal moves. (the position passed in is that of the king of the relevant colour)
-				if (!(in_check(board, 1 - to_play, piece_list[12 + 16 * to_play].loc))) {
+				if (!(in_check(board, 1 - to_play, piece_list[15 + 16 * to_play].loc))) {
 					// the index and piece are already included within the flag so we don't need to add them.
 					add_move(legal_moves[num_moves], piece_legal_moves[j][0], piece_legal_moves[j][1], piece_legal_moves[j][2], 0, 0);
 					num_moves++;
@@ -636,11 +640,9 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 	return num_moves;
 }
 
-
 /*
 Looks for a draw by lack of material, by looking through the piece list and checking whether there are enough pieces to carry on playing
 inputs: piece_list: List of structs of each piece, holding piece location, type and whether it has been captured.
-
 Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
 UNTESTED
@@ -677,6 +679,7 @@ bool draw_by_lack_of_material(struct Piece* piece_list) {
 			}
 		}
 	}
+	return true;
 }
 
 /*
@@ -686,10 +689,8 @@ board: same as usual, 12 x bitboards documented in play_game
 to_play: 0 (white is the one being mated) or 1 (black is the one being mated)
 last_move: last move to be played, using the standard notation used in play_game
 piece_list: array of 32 pieces, each one containing the piece type, their location and whether or not they have been captured yet.
-
 Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
-
 UNTESTED
 */
 int look_for_mates(unsigned long long* board, int to_play, unsigned long long* last_move, struct Piece* piece_list) {
@@ -743,13 +744,14 @@ int look_for_mates(unsigned long long* board, int to_play, unsigned long long* l
 				break;
 			}
 
+
 			// loops through each of the moves generated to see if it's in check.
 			for (j = 0; j < piece_moves; j++) {
 				// move is applied to the position efficiently (factors which don't change whether the resulting position is check aren't applied)
 				captured = quick_apply(board, piece_legal_moves[j], to_play);
 
 				// if the resulting position is not check, then it is neither checkmate nor stalemate
-				if (!(in_check(board, 1 - to_play, piece_list[12 + 16 * to_play].loc))) {
+				if (!(in_check(board, 1 - to_play, piece_list[15 + 16 * to_play].loc))) {
 					quick_undo(board, piece_legal_moves[j], to_play, captured);
 					return 0;
 				}
@@ -761,7 +763,7 @@ int look_for_mates(unsigned long long* board, int to_play, unsigned long long* l
 	}
 
 	// if there are no moves and it is check, then it is checkmate, if not then it is stalemate
-	if (in_check(board, to_play, piece_list[12 + 16 * to_play].loc)) {
+	if (in_check(board, to_play, piece_list[15 + 16 * to_play].loc)) {
 		return 1;
 	}
 	return 2;
@@ -777,10 +779,8 @@ ply_counter: number of ply since the 50 move rule has been reset (1 ply = 1 move
 past_hash_list: array of the hashes of past positions, to check for repetition
 hash: zobrist hash of current position
 last_move: last move to be played, held as 2 bitboards and a flag, as explained in play_game
-
 Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
-
 UNTESTED
 */
 int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, int ply_counter, int* past_hash_list, int hash, unsigned long long* last_move) {
@@ -825,4 +825,105 @@ int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, i
 	}
 
 	return 3;
+}
+
+/*
+Perft function: calculates the number of nodes, captures, en passant captures, castles, promotions, checks and checkmates at a certain depth. 
+These values are then compared to generally accepted values in order to check the functioning of the game mechanics code.
+
+Last Modified: 1/9/2021
+Last Modified by: Arkleseisure
+*/
+void perft_all(unsigned long long* board, unsigned long long* last_move, int castling, struct Piece* piece_list, int to_play, int hash, int* past_hash_list, 
+		int ply_counter, int depth, int* answers) {
+	// checks if the position is at the final depth. if so, it adds the values to the answers, the order of these being: 
+	// Nodes, Captures, En passant, Castling, Promotion, Checks, Checkmates
+	if (depth == 0) {
+		answers[0]++;
+		// captures are noted in the 3rd bit of the flag
+		if ((last_move[2] & 4) != 0) {
+			answers[1]++;
+			// denotes the previous move being en passant
+			if ((last_move[2] & 15) == 5) {
+				answers[2]++;
+			}
+		}
+
+		// checks for kingside or queenside castling
+		if (((last_move[2] & 15) == 2) || ((last_move[2] & 15) == 3)) {
+			answers[3]++;
+		}
+
+		// looks for promotions
+		if ((last_move[2] & 8) != 0){
+			answers[4]++;
+		}
+
+		// looks for checks
+		if (in_check(board, to_play, piece_list[15 + 16 * to_play].loc)) {
+			answers[5]++;
+			if (look_for_mates(board, to_play, last_move, piece_list) != 0)  {
+				answers[6]++;
+			}
+		}
+		return;
+	}
+	unsigned long long moves[220][3];
+	unsigned long long previous_last_move[3];
+	int num_moves;
+	int captured;
+	int i;
+	// single variables are passed as arrays so that their values are returned automatically.
+	int extras[4] = { castling, to_play, hash, ply_counter };
+
+	// this is required in order to be able to undo the move properly, as otherwise the last move is changed and there is no way to get it back.
+	for (i = 0; i < 3; i++) {
+		previous_last_move[i] = last_move[i];
+	}
+
+
+	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
+
+	for (i = 0; i < num_moves; i++){
+		captured = apply(board, moves[i], extras, last_move, piece_list);
+		perft_all(board, last_move, extras[0], piece_list, extras[1], extras[2], past_hash_list, extras[3], depth - 1, answers);
+		unapply(board, moves[i], extras, previous_last_move, piece_list, captured);
+	}
+
+}
+
+/* 
+Same as perft_all, but doesn't return all the debugging statistics and is instead more streamlined and used for benchmarking
+
+Last Modified: 1/9/2021
+Last Modified by: Arkleseisure
+*/
+void perft_nodes(unsigned long long* board, unsigned long long* last_move, int castling, struct Piece* piece_list, int to_play, int hash, int* past_hash_list,
+	int ply_counter, int depth, int* answers) {
+	unsigned long long moves[220][3];
+	unsigned long long previous_last_move[3];
+	int num_moves;
+	int captured;
+	int i;
+	// single variables are passed as arrays so that their values are returned automatically.
+	int extras[4] = { castling, to_play, hash, ply_counter };
+
+	// this is required in order to be able to undo the move properly, as otherwise the last move is changed and there is no way to get it back.
+	for (i = 0; i < 3; i++) {
+		previous_last_move[i] = last_move[i];
+	}
+
+
+	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
+
+	if (depth == 1) {
+		answers[0] += num_moves;
+		return;
+	}
+
+	for (i = 0; i < num_moves; i++) {
+		captured = apply(board, moves[i], extras, last_move, piece_list);
+		perft_nodes(board, last_move, extras[0], piece_list, extras[1], extras[2], past_hash_list, extras[3], depth - 1, answers);
+		unapply(board, moves[i], extras, previous_last_move, piece_list, captured);
+	}
 }
