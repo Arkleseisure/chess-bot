@@ -1,8 +1,10 @@
 from ctypes import CDLL, c_ulonglong, c_int, c_char, Structure, c_bool
 import sys
-import Bits_and_pieces as BaP
 import random
 import time
+import Bits_and_pieces as BaP
+from draw_board import print_board
+
 
 # imports the c libraries
 game_mechanics_lib_path = 'theories/game_mechanics_%s.so' % (sys.platform)
@@ -39,25 +41,28 @@ but the move applied is already known to the program calling this function.
 Last Modified: 04/07/2021
 Last Modified by: Arkleseisure
 '''
-def apply(board, move, castling, to_play, piece_list):
+def apply(board, move, castling, to_play, piece_list, past_hash_list, current_hash, ply_counter, zobrist_numbers):
 	# casts the python variables into the equivalent types in c
 	c_board = (c_ulonglong * 12)(*board)
 	c_move = (c_ulonglong * 3)(*move)
 	c_last_move = (c_ulonglong * 3)()
 	# extras is created so that the object passed is mutable, making it easier to
 	# return stuff
-	extras = (c_int * 2)(*[castling, to_play])
+	extras = (c_int * 3)(*[castling, to_play, ply_counter])
+	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
+	c_hash = (c_ulonglong * 1)(*[current_hash])
+	c_removed_hash = (c_ulonglong * 1)()
 
-
-	# applies the move with the new types
-	game_mech.apply(c_board, c_move, extras, c_last_move, piece_list)
+	piece_taken = game_mech.apply(c_board, c_move, extras, c_hash, c_last_move, piece_list, past_hash_list, c_zobrist_numbers, c_removed_hash)
 	extras = extras[:]
 	castling = extras[0]
 	to_play = extras[1]
+	ply_counter = extras[2]
+	hash = c_hash[0]
 
 	# returns the c arrays as python lists ([:] will automatically cast an
 	# iterable into a list)
-	return c_board[:], castling, to_play, c_last_move[:]
+	return c_board[:], castling, to_play, c_last_move[:], hash, ply_counter
 
 '''
 Interface for the legal_moves function
@@ -87,51 +92,65 @@ def legal_moves(board, castling, to_play, last_move, piece_list):
 
 # initiates the piece list, an array containing a struct for each piece
 def initiate_piece_list(board):
+	piece_types = {0: 'white pawn', 1: 'white knight', 2: 'white bishop', 3: 'white rook', 4: 'white queen', 5: 'white king', 
+			   6: 'black pawn', 7: 'black knight', 8: 'black bishop', 9: 'black rook', 10: 'black queen', 11: 'black king'}
 	piece_list = (Piece * 32)()
 	piece_num = 0
-	for i in range(12):
-		for j in range(64):
-			if ((2 ** j) & board[i]) != 0:
-				new_piece = Piece()
-				new_piece.loc = 2 ** j
-				new_piece.type = i
-				new_piece.captured = False
-				piece_list[piece_num] = new_piece
-				piece_num += 1
+	try:
+		for i in range(12):
+			for j in range(64):
+				if ((2 ** j) & board[i]) != 0:
+					new_piece = Piece()
+					new_piece.loc = 2 ** j
+					new_piece.type = i
+					new_piece.captured = False
+					piece_list[piece_num] = new_piece
+					piece_num += 1
 		
-		# ensures that the kings are always the 16th and 32nd in the piece_list as this fact is used in game_mechanics
-		if i % 6 == 4 and piece_num % 16 != 15:
-			for i in range(15 - (piece_num % 16)):
-				new_piece = Piece()
-				new_piece.loc = 0
-				new_piece.type = 0
-				new_piece.captured = True
-				piece_list[piece_num] = new_piece
-				piece_num += 1
+			# ensures that the kings are always the 16th and 32nd in the piece_list as this fact is used in game_mechanics
+			if i % 6 == 4 and piece_num % 16 != 15:
+				for j in range(15 - (piece_num % 16)):
+					new_piece = Piece()
+					new_piece.loc = 0
+					new_piece.type = 0
+					new_piece.captured = True
+					piece_list[piece_num] = new_piece
+					piece_num += 1
+			# does the same for the rooks, as this is used for quick location of the rooks when castling
+			elif i % 6 == 2 and piece_num % 16 != 12:
+				for j in range(12 - (piece_num % 16)):
+					new_piece = Piece()
+					new_piece.loc = 0
+					new_piece.type = 0
+					new_piece.captured = True
+					piece_list[piece_num] = new_piece
+					piece_num += 1
+	except IndexError:
+		print(piece_num)
+		print_board(board)
 
-	print('Number of pieces in piece list:', piece_num)
 	return piece_list
 
 '''
 Generates pseudorandom numbers used for zobrist hashes (an efficient way to hash a board position), 
 as well as the hash of the initial position and the list of past hashes, with the initial position included
+More info on Zobrist Hashing here: https://www.chessprogramming.org/Zobrist_Hashing
+
 Last Modified: 19/8/2021
 Last Modified by: Arkleseisure
 '''
 def generate_zobrist_stuff(board, castling, to_play, last_move):
+	# ensures that the numbers are the same each time the program is run
 	random.seed(1)
 
-	# adds a 32 bit hash number for each piece on each square (12 * 64), castling
-	# rights (16), en-passant file (8) and black to move (1)
-	# the values are ordered by piece as in the board, then by square number (e.g
-	# zobrist_numbers[0] is for a white pawn on a1, 1 is on a2, ...  64 is a white
-	# knight on a1, ...)
+	# adds a 32 bit hash number for each piece on each square (12 * 64), castling rights (16), en-passant file (8) and black to move (1)
+	# the values are ordered by piece as in the board variable, then by square number 
+	# (e.g zobrist_numbers[0] is for a white pawn on a1, 1 is on a2, ...  64 is a white knight on a1, ...)
 	# castling rights are ordered by binary value as held in the castling variable
-	# (4 bits: kingside/queenside for black (8/4 in terms of int value) then
-	# kingside/queenside for white (2/1))
+	# (4 bits: kingside/queenside for black (8/4 in terms of int value) then kingside/queenside for white (2/1))
 	zobrist_numbers = []
 	for i in range(793):
-		zobrist_numbers.append(random.getrandbits(32))
+		zobrist_numbers.append(random.getrandbits(64))
 
 	initial_hash = 0
 	# the zobrist hash is made by xoring the zobrist numbers corresponding to each
@@ -162,34 +181,53 @@ def generate_zobrist_stuff(board, castling, to_play, last_move):
 	if to_play == 1:
 		initial_hash ^= zobrist_numbers[64 * 12 + 16 + 8]
 
-	past_hash_list = (c_int * 100)()
-	past_hash_list[0] = initial_hash
+	past_hash_list = (c_ulonglong * 100)()
+	past_hash_list[0] = c_ulonglong(initial_hash)
 
 	return initial_hash, zobrist_numbers, past_hash_list
 
 
-def perft(board, last_move, castling, piece_list, to_play, initial_hash, past_hash_list, ply_counter, depth, type='all'):
+def perft(board, last_move, castling, piece_list, to_play, initial_hash, past_hash_list, ply_counter, zobrist_numbers, depth,  type='all'):
 	c_board = (c_ulonglong * 12)(*board)
 	c_last_move = (c_ulonglong * 3)(*last_move)
 	c_castling = c_int(castling)
 	c_to_play = c_int(to_play)
-	c_initial_hash = c_int(initial_hash)
-	c_past_hash_list = (c_int * 100)(*past_hash_list)
-	c_move_counter = c_int(ply_counter)
+	c_initial_hash = c_ulonglong(initial_hash)
+	c_ply_counter = c_int(ply_counter)
 	c_depth = c_int(depth)
+	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
+	c_past_hash_list = (c_ulonglong * 100)(*past_hash_list)
 	answer_type = ['Nodes', 'Captures', 'En passant', 'Castling', 'Promotion', 'Checks', 'Checkmates']
 	answer_dict = {}
 
 	# perft_all is used for testing the rules of the game, and returns statistics for various different things, 
 	# while perft_nodes is used for speed benchmarking and only counts nodes.
 	if type == 'all':
+		moves = legal_moves(board, castling, to_play, last_move, piece_list)
+		for i in range(len(moves)):
+			print(BaP.convert_to_text(moves[i][0]) + BaP.convert_to_text(moves[i][1]))
+		for i in range(len(piece_list)):
+			if not piece_list[i].captured:
+				print(piece_list[i].type)
+				print_board([piece_list[i].loc])
+
 		answers = (c_int * 7)()
-		perft_all(c_board, c_last_move, c_castling, piece_list, c_to_play, c_initial_hash, c_past_hash_list, c_move_counter, c_depth, answers)
+		game_mech.perft_all(c_board, c_last_move, c_past_hash_list, c_castling, piece_list, c_to_play, c_initial_hash, c_ply_counter, c_depth, answers, c_zobrist_numbers)
 	else:
 		answers = (c_int * 1)()
-		perft_nodes(c_board, c_last_move, c_castling, piece_list, c_to_play, c_initial_hash, c_past_hash_list, c_move_counter, c_depth, answers)
+		game_mech.perft_nodes(c_board, c_last_move, c_castling, piece_list, c_to_play, c_initial_hash, c_past_hash_list, c_ply_counter, c_depth, answers, c_zobrist_numbers)
 
 	for i in range(len(answers)):
 		answer_dict[answer_type[i]] = answers[i]
 
 	return answer_dict
+
+
+def terminal(board, to_play, piece_list, ply_counter, past_hash_list, current_hash, last_move):
+	c_board = (c_ulonglong * 12)(*board)
+	c_to_play = c_int(to_play)
+	c_ply_counter = c_int(ply_counter)
+	c_hash = c_ulonglong(current_hash)
+	c_last_move = (c_ulonglong * 3)(*last_move)
+
+	return int(game_mech.terminal(c_board, c_to_play, piece_list, c_ply_counter, past_hash_list, c_hash, c_last_move))
