@@ -1,8 +1,9 @@
 import pygame
 import random
+import time
 from draw_board import initialize_pygame_stuff, draw_board, get_square, print_board
-from c_interface import apply, initiate_piece_list, legal_moves, generate_zobrist_stuff
-import Bits_and_pieces as BaP
+from c_interface import apply, initiate_piece_list, legal_moves, generate_zobrist_stuff, terminal, perft
+from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, switch_fen_colours
 
 initial_pos_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -181,12 +182,12 @@ def initialize_game(fen=initial_pos_fen):
     # initiates the zobrist hashes and zobrist numbers, used to speed up
     # indexing of positions, more info here:
     # https://www.chessprogramming.org/Zobrist_Hashing
-    initial_hash, zobrist_numbers, past_hash_list = generate_zobrist_stuff(board, castling, to_play, last_move)
+    pos_hash, zobrist_numbers, past_hash_list = generate_zobrist_stuff(board, castling, to_play, last_move)
 
     # half move counter, used to find draws by 50 move rule
     ply_counter = int(fen_list[4])
 
-    return background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter
+    return background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter
 
 '''
 Function used to test the speed and functionality of the rules. 
@@ -247,13 +248,13 @@ def test_game_mechanics():
 
     all_tests_passed = True
     for i in range(len(fen_list)):
-        background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen_list[i])
+        background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen_list[i])
         print(fen_names[i])
         passed = True
         for j in range(4):
             print('Depth:', j + 1)
             start_time = time.time()
-            answer_dict = perft(board, last_move, castling, piece_list, to_play, initial_hash, past_hash_list, ply_counter, depth=j + 1)
+            answer_dict = perft(board, last_move, castling, piece_list, to_play, pos_hash, past_hash_list, ply_counter, zobrist_numbers, depth=j + 1)
             time_taken = time.time() - start_time
 
             for key in answer_dict:
@@ -261,7 +262,11 @@ def test_game_mechanics():
                 if answers[key][i][j] != answer_dict[key]:
                     passed = False
                 print('Answer given:', answer_dict[key], 'Actual answer:', answers[key][i][j])
-            print('Time taken:', round(time_taken, 2))
+            print('Time taken:', round(time_taken, 5))
+            try:
+                print('Speed:', round(answer_dict['Nodes']/time_taken), 'nodes per second')
+            except ZeroDivisionError:
+                print('Speed: Too fast to tell')
             print()
 
         if passed:
@@ -353,64 +358,67 @@ def test_draws():
                  'King, 3 same colored bishops vs King', 
                  'King, Knight vs King, Knight',
                  'King, Bishop vs King, Knight', 
-                 'King, Bishop vs King, same coloured Bishop',
                  'King, Bishop vs King, opposite coloured Bishop',
+                 'King, Bishop vs King, same coloured Bishop',
                  'King, Rook vs King', 
                  'King, Queen vs King']
 
     # terminal() returns 3 if the game isn't terminal, 1 if it's a draw and 0/2 for wins for black/white
-    answer_list = [3, 1, 1, 1, 1, 1, 1, 3, 3, 3, 1, 3, 3, 3, 1, 3, 3]
+    answer_list = [3, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 1, 3, 3]
 
     for i in range(len(fen_list)):
-        background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen_list[i])
-        result = terminal(board, to_play, piece_list, ply_counter, past_hash_list, initial_hash, last_move)
+        background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen_list[i])
+        result = terminal(board, to_play, piece_list, ply_counter, past_hash_list, pos_hash, last_move)
         if result != answer_list[i]:
-            print(fen_names[i], 'for white failed')
+            print(fen_names[i], 'for white failed.')
+            print('Expected outcome:', answer_list[i], 'Actual outcome:', result)
             draws_work = False
 
         # verifies that the code works equally well for both colours
-        background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(switch_fen_colours(fen_list[i]))
-        result = terminal(board, to_play, piece_list, ply_counter, past_hash_list, initial_hash, last_move)
+        background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(switch_fen_colours(fen_list[i]))
+        result = terminal(board, to_play, piece_list, ply_counter, past_hash_list, pos_hash, last_move)
         if result != answer_list[i]:
             print(fen_names[i], 'for black failed')
+            print('Expected outcome:', answer_list[i], 'Actual outcome:', result)
             draws_work = False
 
 
     # tests draw by repetition by moving the knights to and from the starting position multiple times.
     fen = initial_pos_fen
-    background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen)
+    background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen)
     for i in range(2):
         moves = legal_moves(board, castling, to_play, last_move, piece_list)
         for move in moves:
             # the move starts on the starting square of the knight on b1
             if move[0] == 2:
-                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+                board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
                 break
 
         moves = legal_moves(board, castling, to_play, last_move, piece_list)
         for move in moves:
             # the move starts on the starting square of the knight on b8
             if move[0] == 2**57:
-                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+                board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
                 break
 
         moves = legal_moves(board, castling, to_play, last_move, piece_list)
         for move in moves:
             # moves the knight back to b1
-            if (move[0] == 2 ** 8 or move[0] == 2 ** 10) and move[1] == 2:
-                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+            if (move[0] == 2 ** 16 or move[0] == 2 ** 18) and move[1] == 2:
+                board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
                 break
 
         moves = legal_moves(board, castling, to_play, last_move, piece_list)
         for move in moves:
             # moves the knight back to b8
-            if (move[0] == 2 ** 48 or move[0] == 2 ** 50) and move[1] == 2**57:
-                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+            if (move[0] == 2 ** 40 or move[0] == 2 ** 42) and move[1] == 2**57:
+                board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
                 break
 
-    if terminal(board, to_play, piece_list, ply_counter, past_hash_list, initial_hash, last_move) != 1:
+    if terminal(board, to_play, piece_list, ply_counter, past_hash_list, pos_hash, last_move) != 1:
         print('Repetition test failed')
         draws_work = False
+
 
 
     # tests the 50 move rule more thoroughly by making the computer apply the moves and then check for a draw
@@ -421,7 +429,7 @@ def test_draws():
     captures = 0
     for i in range(5):
         fen = '2k5/8/8/8/8/8/8/5BNK w - - 0 1'
-        background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen)
+        background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen)
         move = [0, 0, 4]
         capture_happened = False
         for j in range(100):
@@ -436,12 +444,12 @@ def test_draws():
                 if k >= 50:
                     capture_happened = True
                     break
-            board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+            board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
 
         # tallies up whether the results were successes, fails, or captures (i.e no result because it wasn't able to test properly)
         if capture_happened:
             captures += 1
-        elif terminal(board, to_play, piece_list, ply_counter, past_hash_list, initial_hash, last_move) == 1:
+        elif terminal(board, to_play, piece_list, ply_counter, past_hash_list, pos_hash, last_move) == 1:
             success += 1
         else:
             fails += 1
@@ -449,34 +457,19 @@ def test_draws():
     if fails != 0:
         print('Draw by 50 move rule failed')
         draws_work = False
-
+    
     if success != 5:
+        print('Draw by 50 move rule results:')
         print('Success:', success, 'Fail:', fails, 'Captures:', captures)
 
     return draws_work
 
 
-
-# takes in the board part of the fen and returns the bitboard for a specific piece type
-def get_bitboard_from_fen(fen, piece):
-    square_number = 56
-    bitboard = 0
-    for item in fen:
-        if item == '/':
-            square_number -= 16
-        elif item == piece:
-            bitboard += 2 ** square_number
-            square_number += 1
-        elif item.isdigit():
-            square_number += int(item)
-        else:
-            square_number += 1
-    return bitboard
-
-
 # function used until all the functions in play_game are coded, allows us to test what we've done so far
 def do_test_stuff(colour, ai):
-    background, buttons, board, last_move, castling, piece_list, to_play, initial_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game()
+    background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game()
+
+    test_game_mechanics()
 
     quit = False
     square_selected = False
@@ -489,7 +482,7 @@ def do_test_stuff(colour, ai):
         poss_moves = legal_moves(board, castling, to_play, last_move, piece_list)
         # prints the legal moves as [starting square][finishing square] [flag] [piece type] [piece index]
         for move in poss_moves:
-            print(BaP.convert_to_text(move[0]) + BaP.convert_to_text(move[1]) + ' ' + str(move[2] % 16) + ' ' + str((move[2] % 256) // 16) + ' ' + str(move[2] // 256))
+            print(convert_to_text(move[0]) + convert_to_text(move[1]) + ' ' + str(move[2] % 16) + ' ' + str((move[2] % 256) // 16) + ' ' + str(move[2] // 256))
         print('\nlegal moves printed\n\n')
 
         if not square_selected:
@@ -512,9 +505,12 @@ def do_test_stuff(colour, ai):
             if button_clicked == 'Exit':
                 quit = True
             elif move != [0, 0, 0]:
-                board, castling, to_play, last_move = apply(board, move, castling, to_play, piece_list)
+                board, castling, to_play, last_move, pos_hash, ply_counter = apply(board, move, castling, to_play, piece_list, past_hash_list, pos_hash, ply_counter, zobrist_numbers)
                 square_selected = False
             else:
                 move_from = move_to
                 square_selected = True
+
+            if terminal(board, to_play, piece_list, ply_counter, past_hash_list, pos_hash, last_move) != 3:
+                quit = True
 
