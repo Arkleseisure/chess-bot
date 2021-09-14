@@ -1,6 +1,7 @@
 import pygame
 import random
 import time
+import numpy as np
 from draw_board import initialize_pygame_stuff, draw_board, get_square, print_board
 from c_interface import apply, initiate_piece_list, legal_moves, generate_zobrist_stuff, terminal, perft
 from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, switch_fen_colours
@@ -102,6 +103,7 @@ def initialize_game(fen=initial_pos_fen):
 
     board = [white_pawns, white_knights, white_bishops, white_rooks, white_queens, white_king, 
              black_pawns, black_knights, black_bishops, black_rooks, black_queens, black_king]
+
 
     # player to move, 0 if white to play, 1 if black to play
     to_play = 0 if fen_list[1] == 'w' else 1
@@ -209,37 +211,37 @@ def test_game_mechanics():
                 'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1', 
                 'r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1']
     fen_names = ['Initial position', 'Kiwipete', 'Rook endgame', 'White to play', 'Black to play']
-    answers = {'Nodes': [[20, 400, 8902, 197281],
-                  [48, 2039, 97862, 4085603],
-                  [14, 191, 2812, 43238],
-                  [6, 264, 9467, 422333],
-                  [6, 264, 9467, 422333]],
-              'Captures': [[0, 0, 34, 1576],
+    answers = {'Nodes': [[20, 400, 8902, 197281, 4865609, 119060324, 3195901860],
+                  [48, 2039, 97862, 4085603, 193690690], #, 8031647685],
+                  [14, 191, 2812, 43238, 674624, 11030083],
+                  [6, 264, 9467, 422333, 15833292, 706045033],
+                  [6, 264, 9467, 422333, 15833292, 706045033]],
+              'Captures': [[0, 0, 34, 1576, 82719, 2812008, 108329926],
                   [8, 351, 17102, 757163],
                   [1, 14, 209, 3348],
                   [0, 87, 1021, 131393],
                   [0, 87, 1021, 131393]],
-              'En passant': [[0, 0, 0, 0],
+              'En passant': [[0, 0, 0, 0, 258, 5248, 319617],
                   [0, 1, 45, 1929],
                   [0, 0, 2, 123],
                   [0, 0, 4, 0],
                   [0, 0, 4, 0]],
-               'Castling': [[0, 0, 0, 0],
+               'Castling': [[0, 0, 0, 0, 0, 0, 883453],
                   [2, 91, 3162, 128013],
                   [0, 0, 0, 0],
                   [0, 6, 0, 7795],
                   [0, 6, 0, 7795]],
-               'Promotion': [[0, 0, 0, 0],
+               'Promotion': [[0, 0, 0, 0, 0, 0, 0],
                   [0, 0, 0, 15172],
                   [0, 0, 0, 0],
                   [0, 48, 120, 60032],
                   [0, 48, 120, 60032]],
-               'Checks': [[0, 0, 12, 496],
+               'Checks': [[0, 0, 12, 469, 27351, 809099, 33103848],
                   [0, 3, 993, 25523],
                   [2, 10, 267, 1680],
                   [0, 10, 38, 15492],
                   [0, 10, 38, 15492]],
-               'Checkmates': [[0, 0, 0, 8],
+               'Checkmates': [[0, 0, 0, 8, 347, 10828, 435767],
                   [0, 0, 1, 43],
                   [0, 0, 0, 17],
                   [0, 0, 22, 5],
@@ -249,13 +251,12 @@ def test_game_mechanics():
     all_tests_passed = True
     for i in range(len(fen_list)):
         background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen_list[i])
+        draw_board(to_play, background, buttons, board, last_move, current_move=0)
         print(fen_names[i])
         passed = True
         for j in range(4):
             print('Depth:', j + 1)
-            start_time = time.time()
-            answer_dict = perft(board, last_move, castling, piece_list, to_play, pos_hash, past_hash_list, ply_counter, zobrist_numbers, depth=j + 1)
-            time_taken = time.time() - start_time
+            answer_dict, time_taken = perft(board, last_move, castling, piece_list, to_play, pos_hash, past_hash_list, ply_counter, zobrist_numbers, depth=j + 1, type='all')
 
             for key in answer_dict:
                 print(key)
@@ -275,11 +276,13 @@ def test_game_mechanics():
             all_tests_passed = False
         print()
 
+    print(all_tests_passed)
     # tests the draws, which the perft function doesn't seem to do quite so well.
     draws_work = test_draws()
     if draws_work:
         print('Draw tests succeeded.')
     else:
+        print('Draw tests failed.')
         all_tests_passed = False
 
     if all_tests_passed:
@@ -419,8 +422,6 @@ def test_draws():
         print('Repetition test failed')
         draws_work = False
 
-
-
     # tests the 50 move rule more thoroughly by making the computer apply the moves and then check for a draw
     # takes a King Bishop Knight vs King position and makes the computer play 100 random moves (50 for each side) to reach the 50 move rule.
     # statistically speaking nothing should happen, but it is repeated 5 times so that any accidental checkmates are accounted for
@@ -430,13 +431,14 @@ def test_draws():
     for i in range(5):
         fen = '2k5/8/8/8/8/8/8/5BNK w - - 0 1'
         background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game(fen)
+
         move = [0, 0, 4]
         capture_happened = False
         for j in range(100):
             moves = legal_moves(board, castling, to_play, last_move, piece_list)
             k = 0
             # prevents captures to make sure that the 50 move rule is reached
-            while move[2] & 4 != 0:
+            while (move[2] & 4) != 0:
                 move = moves[random.randint(0, len(moves) - 1)]
 
                 # breaks out of the loop to avoid infinite loops in the case where taking a piece is the only legal move
@@ -465,11 +467,36 @@ def test_draws():
     return draws_work
 
 
+def speed_test():
+    print('Speed test started')
+    speeds = [[],[],[],[],[]]
+    for i in range(3):
+        start_time = time.time()
+        trials = 0
+        depth = i + 3
+        print('Started depth', depth, 'at', time.ctime(time.time()))
+        while time.time() - start_time < 600:
+            background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game()
+            answer_dict, time_taken = perft(board, last_move, castling, piece_list, to_play, pos_hash, past_hash_list, ply_counter, zobrist_numbers, depth=depth, type='nodes')
+            speeds[i].append(answer_dict['Nodes']/time_taken)
+            trials += 1
+
+        if len(speeds[i]) > 1:
+            avg_speed = np.average(speeds[i])
+            speed_std = np.std(speeds[i], ddof=1)
+            error = speed_std/np.sqrt(len(speeds[i]))
+            print('Speed estimate for depth', depth, round(avg_speed, -3), '+-', round(error, -3), i + 1)
+            print('Trials:', trials)
+    print('Finished')
+        
+
+
 # function used until all the functions in play_game are coded, allows us to test what we've done so far
 def do_test_stuff(colour, ai):
     background, buttons, board, last_move, castling, piece_list, to_play, pos_hash, zobrist_numbers, past_hash_list, ply_counter = initialize_game()
 
-    test_game_mechanics()
+    speed_test()
+    return
 
     quit = False
     square_selected = False
