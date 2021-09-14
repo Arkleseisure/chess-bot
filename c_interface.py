@@ -203,24 +203,20 @@ def perft(board, last_move, castling, piece_list, to_play, initial_hash, past_ha
 	# perft_all is used for testing the rules of the game, and returns statistics for various different things, 
 	# while perft_nodes is used for speed benchmarking and only counts nodes.
 	if type == 'all':
-		moves = legal_moves(board, castling, to_play, last_move, piece_list)
-		for i in range(len(moves)):
-			print(BaP.convert_to_text(moves[i][0]) + BaP.convert_to_text(moves[i][1]))
-		for i in range(len(piece_list)):
-			if not piece_list[i].captured:
-				print(piece_list[i].type)
-				print_board([piece_list[i].loc])
-
-		answers = (c_int * 7)()
+		answers = (c_ulonglong * 7)()
+		start_time = time.time()
 		game_mech.perft_all(c_board, c_last_move, c_past_hash_list, c_castling, piece_list, c_to_play, c_initial_hash, c_ply_counter, c_depth, answers, c_zobrist_numbers)
+		time_taken = time.time() - start_time
 	else:
-		answers = (c_int * 1)()
+		answers = (c_ulonglong * 1)()
+		start_time = time.time()
 		game_mech.perft_nodes(c_board, c_last_move, c_castling, piece_list, c_to_play, c_initial_hash, c_past_hash_list, c_ply_counter, c_depth, answers, c_zobrist_numbers)
+		time_taken = time.time() - start_time
 
 	for i in range(len(answers)):
 		answer_dict[answer_type[i]] = answers[i]
 
-	return answer_dict
+	return answer_dict, time_taken
 
 
 def terminal(board, to_play, piece_list, ply_counter, past_hash_list, current_hash, last_move):
