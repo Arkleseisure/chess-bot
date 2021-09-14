@@ -7,7 +7,7 @@
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is version 178.\n");
+	printf(" This is version 297.\n");
 }
 
 // structure defining the key elements for each piece
@@ -95,6 +95,25 @@ void add_move(unsigned long long* moves, unsigned long long piece_loc, unsigned 
 }
 
 /*
+Prints an input bitboard to the screen.
+
+Last Modified: 12/9/2021
+Last Modified by: Arkleseisure
+*/
+void print_bitboard(unsigned long long bitboard) {
+	int j;
+	int k;
+	printf("%llx\n", bitboard);
+	for (j = 0; j < 8; j++) {
+		for (k = 0; k < 8; k++) {
+			printf("%d", (bitboard & ((unsigned long long)1 << (8 * (7 - j) + k))) != 0);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
+/*
 Function to print the contents of the board in the form of bitboards, mainly for debugging purposes.
 
 Last Modified: 6/9/2021
@@ -102,20 +121,36 @@ Last Modified by: Arkleseisure
 */
 void print_board(unsigned long long* board) {
 	int i;
-	int j;
-	int k;
-
 
 	for (i = 0; i < 12; i++) {
-		printf("%llx\n", board[i]);
-		for (j = 0; j < 8; j++) {
-			for (k = 0; k < 8; k++) {
-				printf("%d", (board[i] & ((unsigned long long)1 << (8 * (7 - j) + k))) != 0);
-			}
-			printf("\n");
-		}
-		printf("\n");
+		print_bitboard(board[i]);
 	}
+}
+
+/*
+Given a move in bitboard form, returns the equivalent move in format a1a2
+
+Last Modified: 11/9/2021
+Last Modified by: Arkleseisure
+*/
+void get_move_string(unsigned long long* move, char* output_move) {
+	output_move[0] = file(move[0]) + 'a';
+	output_move[1] = rank(move[0]) + '1';
+	output_move[2] = file(move[1]) + 'a';
+	output_move[3] = rank(move[1]) + '1';
+}
+
+void print_move(unsigned long long* move) {
+	char move_string[4];
+	char promotions[4] = { 'N', 'B', 'R', 'Q' };
+	get_move_string(move, move_string);
+	for (int i = 0; i < 4; i++) {
+		printf("%c", move_string[i]);
+	}
+	if ((move[2] & 8) != 0) {
+		printf("%c", promotions[move[2] & 3]);
+	}
+	printf("\n");
 }
 
 /*
@@ -150,6 +185,7 @@ bool is_attacked(unsigned long long* board, int player_attacked, unsigned long l
 	// first bitboard encodes pieces of the opposite colour which can move horizontally/vertically, and the second diagonally
 	unsigned long long movers[2] = { board[3 + colour_shift] ^ board[4 + colour_shift], board[2 + colour_shift] ^ board[4 + colour_shift] };
 	unsigned long long new_position;
+	int new_rank;
 
 	// loops through each of the eight directions in which it can move
 	for (i = 0; i < 8; i++) {
@@ -159,25 +195,29 @@ bool is_attacked(unsigned long long* board, int player_attacked, unsigned long l
 		// loops though moving one square at a time
 		for (j = 1; j < 8; j++) {
 			new_position = shift_bitboard(loc, shift * j, direction);
+			new_rank = rank(new_position);
+			// checks whether the loop should be stopped due to going off the side of the board
+			// first checks it hasn't gone off the top or bottom of the board
+			// second checks it hasn't moved horizontally off the side of the board (when i % 4 == 0, the shift is 1, so we are looking horizontally)
+			// third checks it hasn't moved diagonally off the side of the board (the diagonal moves occupy the odd positions in the list)
+			if ((new_position == 0) || ((i % 4 == 0) && (new_rank != loc_rank)) || ((i % 2 == 1) && (abs(new_rank - loc_rank) != j))) {
+				break;
+			}
 			// movers holds the bitboard with pieces of the opposite colour able to move in the relevant direction, so the first statement looks for checks from bishops/rooks/queens. 
 			// (some_bitboard & new_position) != 0 returns true if the new position has landed on some square present in the bitboard
-			if ((movers[i % 2] & new_position) != 0) {
+			else if ((movers[i % 2] & new_position) != 0) {
 				return true;
 			}
 			// Handles attacks from the king
 			else if (j == 1 && ((board[5 + colour_shift] & new_position) != 0)) {
 				return true;
 			}
-			// Handles attacks from pawns (if i % 2 == 1, then the direction is diagonal, and if i / 4 == player_attacked, the direction is correct as well)
-			else if (j == 1 && (i % 2 == 1 && i / 4 == player_attacked && ((board[colour_shift] & new_position) != 0))) {
+			// Handles attacks from pawns (if i % 2 == 1, then the direction is diagonal, and if i / 4 == (1 - player_attacked), the direction up/down is correct as well)
+			else if (j == 1 && (i % 2 == 1 && i / 4 == (1 - player_attacked) && ((board[colour_shift] & new_position) != 0))) {
 				return true;
 			}
-			// checks whether the loop should be stopped due to being blocked by a piece or the side of the board
-			// first checks it hasn't gone off the top or bottom of the board
-			// second checks it hasn't landed on a piece
-			// third checks it hasn't moved horizontally off the side of the board (when i % 4 == 0, the shift is 1, so we are looking horizontally)
-			// fourth checks it hasn't moved diagonally off the side of the board (the diagonal moves occupy the odd positions in the list)
-			else if ((new_position == 0) || ((new_position & all_pieces) != 0) || ((i % 4 == 0) && (rank(new_position) != loc_rank)) || ((i % 2 == 1) && (abs(rank(new_position) - loc_rank) != j))) {
+			// if there is a piece in the way, it breaks
+			else if ((new_position & all_pieces) != 0) {
 				break;
 			}
 		}
@@ -187,22 +227,14 @@ bool is_attacked(unsigned long long* board, int player_attacked, unsigned long l
 
 	// array holding the amount a bit has to be shifted to make each knight move in the positive direction (this is then reflected for the negative)
 	int knight_shifts[] = { 6, 10, 15, 17 };
-	int loc_file = file(loc);
+	int rank_changes[] = { 1, 1, 2, 2, 1, 1, 2, 2 };
 
 	// loops through the possible shifts
-	for (i = 0; i < 4; i++) {
-		new_position = shift_bitboard(loc, knight_shifts[i], 1);
-		// adds moves going up the board
-		// if it hasn't gone off the side and there is a knight on that square, then that knight attacks the square
-		if (abs((loc_file + knight_shifts[i]) % 8 - loc_file) <= 2 && ((new_position & board[1 + colour_shift]) != 0)) {
-			return true;
-		}
+	for (i = 0; i < 8; i++) {
+		new_position = shift_bitboard(loc, knight_shifts[i % 4], directions[i / 4]);
 
-		// note: % doesn't work with negative numbers, which is why we need to do the two versions separately
-		new_position = shift_bitboard(loc, knight_shifts[i], -1);
-		// adds moves going down the board (by symmetry the calculation which checks the side above works here, 
-		// but with flipped coordinates (as the coordinates are now decreasing instead of increasing))
-		if (abs((knight_shifts[i] + (7 - loc_file)) % 8 - (7 - loc_file)) <= 2 && (board[1 + colour_shift] & new_position) != 0) {
+		// if it hasn't gone off the side and there is a knight on that square, then that knight attacks the square
+		if (abs(rank(new_position) - loc_rank) == rank_changes[i] && (new_position & board[1 + colour_shift]) != 0) {
 			return true;
 		}
 	}
@@ -224,13 +256,15 @@ Last Modified: 10/8/2021
 Last Modified by: Arkleseisure
 */
 int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
-	unsigned long long index, int to_play, unsigned long long* last_move) {
+				unsigned long long index, int to_play, unsigned long long* last_move) {
 	int i;
 	int j;
 	int num_moves = 0;
 	int direction = 1 - 2 * to_play;
 	// used for updating the flag when promotion occurs
 	unsigned long long original_flag;
+
+	unsigned long long piece_type = 6 * (unsigned long long)to_play;
 
 	// variable holding the rank the pawn is on for ease of calculation for double moves at the start and promotion
 	int piece_rank = rank(loc);
@@ -239,12 +273,12 @@ int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_piec
 
 	// checks if the square in front of the pawn is occupied
 	if ((shift_bitboard(loc, 8, direction) & (same_pieces | other_pieces)) == 0) {
-		add_move(moves[0], loc, shift_bitboard(loc, 8, direction), 0, 6 * (unsigned long long)to_play, index);
+		add_move(moves[0], loc, shift_bitboard(loc, 8, direction), 0, piece_type, index);
 		num_moves = 1;
 
 		// checks for double moves (first term checks if the rank of the piece is 1 for white or 6 for black (due to indexing from 0), second for a piece on the next square)
 		if (piece_rank == to_play * 5 + 1 && ((shift_bitboard(loc, 16, direction) & (same_pieces | other_pieces)) == 0)) {
-			add_move(moves[1], loc, shift_bitboard(loc, 16, direction), 1, 6 * (unsigned long long)to_play, index);
+			add_move(moves[1], loc, shift_bitboard(loc, 16, direction), 1, piece_type, index);
 			num_moves = 2;
 		}
 	}
@@ -252,23 +286,23 @@ int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_piec
 	// captures... first checks whether there is an opponent's piece on the relevant square, then if it is on a file for which that capture is possible 
 	// (as we are using single numbers as bitboards, there is no inbuilt idea of edges of the board)
 	if ((shift_bitboard(loc, 7, direction) & other_pieces) != 0 && piece_file != 7 * to_play) {
-		add_move(moves[num_moves], loc, shift_bitboard(loc, 7, direction), 4, 6 * (unsigned long long)to_play, index);
+		add_move(moves[num_moves], loc, shift_bitboard(loc, 7, direction), 4, piece_type, index);
 		num_moves++;
 	}
 	if ((shift_bitboard(loc, 9, direction) & other_pieces) != 0 && piece_file != 7 * (1 - to_play)) {
-		add_move(moves[num_moves], loc, shift_bitboard(loc, 9, direction), 4, 6 * (unsigned long long)to_play, index);
+		add_move(moves[num_moves], loc, shift_bitboard(loc, 9, direction), 4, piece_type, index);
 		num_moves++;
 	}
 
 	// en passant (if statement translates to: if (last move was a double pawn push) and then the next two check 
 	// whether it is to the left or right of the current pawn)
 	if ((last_move[2] & 15) == 1) {
-		if (last_move[1] >> 1 == loc) {
-			add_move(moves[num_moves], loc, shift_bitboard(loc, 9 - 2 * to_play, direction), 5, 6 * (unsigned long long)to_play, index);
+		if (last_move[1] >> 1 == loc && piece_file != 7) {
+			add_move(moves[num_moves], loc, shift_bitboard(loc, 9 - 2 * to_play, direction), 5, piece_type, index);
 			num_moves++;
 		}
-		else if (last_move[1] << 1 == loc) {
-			add_move(moves[num_moves], loc, shift_bitboard(loc, 7 + 2 * to_play, direction), 5, 6 * (unsigned long long)to_play, index);
+		else if (last_move[1] << 1 == loc && piece_file != 0) {
+			add_move(moves[num_moves], loc, shift_bitboard(loc, 7 + 2 * to_play, direction), 5, piece_type, index);
 			num_moves++;
 		}
 	}
@@ -307,34 +341,27 @@ int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pi
 	int num_moves = 0;
 	// array holding the amount a bit has to be shifted to make each knight move in the positive direction (this is then reflected for the negative)
 	int knight_shifts[] = { 6, 10, 15, 17 };
-	int piece_file = file(loc);
+	int directions[] = { -1, 1 };
+	int rank_changes[] = { 1, 1, 2, 2, 1, 1, 2, 2 };
+	int piece_rank = rank(loc);
+	
+	int piece_type = 1 + 6 * (unsigned long long)to_play;
 
+
+	unsigned long long new_pos;
 	// loops through the possible shifts
-	for (i = 0; i < 4; i++) {
-		// adds moves going up the board (first if statement checks the move doesn't go off the sides)
-		if (loc << knight_shifts[i] != 0 && abs((piece_file + knight_shifts[i]) % 8 - piece_file) <= 2) {
+	for (i = 0; i < 8; i++) {
+		new_pos = shift_bitboard(loc, knight_shifts[i % 4], directions[i / 4]);
+		// checks if the move takes it off the side of the board
+		if (new_pos != 0 && abs(rank(new_pos) - piece_rank) == rank_changes[i]) {
 			// captures
-			if (((loc << knight_shifts[i]) & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, loc << knight_shifts[i], 4, 1 + 6 * (unsigned long long)to_play, index);
+			if ((new_pos & other_pieces) != 0) {
+				add_move(moves[num_moves], loc, new_pos, 4, piece_type, index);
 				num_moves++;
 			}
 			// normal moves
-			else if (((loc << knight_shifts[i]) & same_pieces) == 0) {
-				add_move(moves[num_moves], loc, loc << knight_shifts[i], 0, 1 + 6 * (unsigned long long)to_play, index);
-				num_moves++;
-			}
-		}
-		// adds moves going down the board (by symmetry the calculation which checks the side above works here, 
-		// but with flipped coordinates (as the coordinates are now decreasing instead of increasing))
-		if (loc >> knight_shifts[i] != 0 && abs((knight_shifts[i] + (7 - piece_file)) % 8 - (7 - piece_file)) <= 2) {
-			// captures
-			if (((loc >> knight_shifts[i]) & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 4, 1 + 6 * (unsigned long long)to_play, index);
-				num_moves++;
-			}
-			// normal moves
-			else if (((loc >> knight_shifts[i]) & same_pieces) == 0) {
-				add_move(moves[num_moves], loc, loc >> knight_shifts[i], 0, 1 + 6 * (unsigned long long)to_play, index);
+			else if ((new_pos & same_pieces) == 0) {
+				add_move(moves[num_moves], loc, new_pos, 0, piece_type, index);
 				num_moves++;
 			}
 		}
@@ -363,6 +390,7 @@ int get_bishop_moves(unsigned long long same_pieces, unsigned long long other_pi
 	int piece_shifts[] = { 7, 9 };
 	int directions[] = { -1, 1 };
 	unsigned long long new_position;
+	unsigned long long piece_type = 2 + 6 * (unsigned long long)to_play;
 
 	// loops through each of the four directions in which it can move
 	for (i = 0; i < 4; i++) {
@@ -374,11 +402,11 @@ int get_bishop_moves(unsigned long long same_pieces, unsigned long long other_pi
 			}
 			// if the move is a capture, it adds that move and then breaks to the next loop
 			else if ((new_position & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, new_position, 4, 2 + 6 * (unsigned long long)to_play, index);
+				add_move(moves[num_moves], loc, new_position, 4, piece_type, index);
 				num_moves++;
 				break;
 			}
-			add_move(moves[num_moves], loc, new_position, 0, 2 + 6 * (unsigned long long)to_play, index);
+			add_move(moves[num_moves], loc, new_position, 0, piece_type, index);
 			num_moves++;
 		}
 	}
@@ -406,6 +434,7 @@ int get_rook_moves(unsigned long long same_pieces, unsigned long long other_piec
 	int piece_shifts[] = { 1, 8 };
 	int directions[] = { -1, 1 };
 	unsigned long long new_position;
+	unsigned long long piece_type = 3 + 6 * (unsigned long long)to_play;
 
 	// loops through each of the four directions in which it can move
 	for (i = 0; i < 4; i++) {
@@ -417,11 +446,11 @@ int get_rook_moves(unsigned long long same_pieces, unsigned long long other_piec
 			}
 			// if the move is a capture, it adds that move and then breaks to the next loop
 			else if ((new_position & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, new_position, 4, 3 + 6 * (unsigned long long)to_play, index);
+				add_move(moves[num_moves], loc, new_position, 4, piece_type, index);
 				num_moves++;
 				break;
 			}
-			add_move(moves[num_moves], loc, new_position, 0, 3 + 6 * (unsigned long long)to_play, index);
+			add_move(moves[num_moves], loc, new_position, 0, piece_type, index);
 			num_moves++;
 		}
 	}
@@ -449,6 +478,7 @@ int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pie
 	int piece_shifts[] = { 1, 7, 8, 9 };
 	int directions[] = { -1, 1 };
 	unsigned long long new_position;
+	unsigned long long piece_type = 4 + 6 * (unsigned long long)to_play;
 
 	// loops through each of the eight directions in which it can move
 	for (i = 0; i < 8; i++) {
@@ -461,16 +491,16 @@ int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pie
 			// third checks it hasn't moved horizontally off the side of the board (horizontal moves occur when the shift is 1, so i % 4 = 0)
 			// fourth checks it hasn't moved diagonally off the side of the board (diagonal moves take up the odd positions in the list)
 			if (new_position == 0 || (new_position & same_pieces) != 0 || ((i % 4 == 0) && rank(new_position) != piece_rank) ||
-				((i % 2 == 1) && abs(rank(new_position) - piece_rank) != j)) {
+					((i % 2 == 1) && abs(rank(new_position) - piece_rank) != j)) {
 				break;
 			}
 			// if the move is a capture, it adds that move and then breaks to the next loop
 			else if ((new_position & other_pieces) != 0) {
-				add_move(moves[num_moves], loc, new_position, 4, 4 + 6 * (unsigned long long)to_play, index);
+				add_move(moves[num_moves], loc, new_position, 4, piece_type, index);
 				num_moves++;
 				break;
 			}
-			add_move(moves[num_moves], loc, new_position, 0, 4 + 6 * (unsigned long long)to_play, index);
+			add_move(moves[num_moves], loc, new_position, 0, piece_type, index);
 			num_moves++;
 		}
 	}
@@ -500,6 +530,7 @@ int get_king_moves(unsigned long long same_pieces, unsigned long long other_piec
 	int piece_shifts[] = { 1, 7, 8, 9 };
 	int directions[] = { -1, 1 };
 	unsigned long long new_position;
+	unsigned long long piece_type = 5 + 6 * (unsigned long long)to_play;
 
 	// loops through each of the eight directions in which it can move
 	for (i = 0; i < 8; i++) {
@@ -507,33 +538,36 @@ int get_king_moves(unsigned long long same_pieces, unsigned long long other_piec
 		// checks the move doesn't take the piece off the side of the board or onto one of their own pieces
 		// first checks it hasn't gone off the top or bottom of the board
 		// second checks it hasn't landed on a friendly piece
-		// third checks it hasn't moved horizontally off the side of the board
-		// fourth checks it hasn't moved diagonally off the side of the board (7 and 9 are the shifts for diagonal moves)
-		if (new_position == 0 || (new_position & same_pieces) != 0 || (piece_shifts[i % 4] == 1 && rank(new_position) != piece_rank) ||
-			((piece_shifts[i % 4] == 7 || piece_shifts[i % 4] == 9) && abs(rank(new_position) - piece_rank) != 1)) {
+		// third checks it hasn't moved horizontally off the side of the board (horizontal moves occur when the shift is 1, so i % 4 = 0)
+		// fourth checks it hasn't moved diagonally off the side of the board (diagonal moves take up the odd positions in the list)
+		if (new_position == 0 || (new_position & same_pieces) != 0 || ((i % 4 == 0) && rank(new_position) != piece_rank) ||
+			((i % 2 == 1) && abs(rank(new_position) - piece_rank) != 1)) {
 		}
 		// if the move is a capture, it adds that move and then breaks to the next loop
 		else if ((new_position & other_pieces) != 0) {
-			add_move(moves[num_moves], loc, new_position, 4, 5 + 6 * (unsigned long long)to_play, index);
+			add_move(moves[num_moves], loc, new_position, 4, piece_type, index);
 			num_moves++;
 		}
 		else {
-			add_move(moves[num_moves], loc, new_position, 0, 5 + 6 * (unsigned long long)to_play, index);
+			add_move(moves[num_moves], loc, new_position, 0, piece_type, index);
 			num_moves++;
 		}
 	}
 
-	// castling kingside (checks whether the king or rook have moved (held in the castling variable), then verifies the castle would not be moving through check, 
-	// then that it would not be moving through pieces... 96 is 01100000, so represents the squares which must be free for the move to be made)
-	if (((castling & (2 + 6 * to_play)) != 0) && !(is_attacked(board, to_play, loc << 1)) && (((other_pieces ^ same_pieces) & ((unsigned long long)96 << (56 * (unsigned long long)to_play))) == 0)) {
-		add_move(moves[num_moves], loc, loc << 2, 2, 5 + 6 * (unsigned long long)to_play, index);
-		num_moves++;
-	}
-	// castling queenside
-	// generally the same as kingside, but with 00001110 being 14 representing the squares which need to be free
-	if ((castling & (1 + 3 * to_play)) != 0 && !(is_attacked(board, to_play, loc >> 1)) && ((other_pieces ^ same_pieces) & ((unsigned long long)14 << (56 * (unsigned long long)to_play))) == 0) {
-		add_move(moves[num_moves], loc, loc >> 2, 3, 5 + 6 * (unsigned long long)to_play, index);
-		num_moves++;
+	// if the king is in check, then castling isn't legal
+	if (castling != 0 && !(is_attacked(board, to_play, loc))) {
+		// castling kingside (checks whether the king or rook have moved (held in the castling variable), then verifies the castle would not be moving through check, 
+		// then that it would not be moving through pieces... 96 is 01100000, so represents the squares which must be free for the move to be made)
+		if (((castling & (2 + 6 * to_play)) != 0) && !(is_attacked(board, to_play, loc << 1)) && (((other_pieces ^ same_pieces) & ((unsigned long long)96 << (56 * to_play))) == 0)) {
+			add_move(moves[num_moves], loc, loc << 2, 2, piece_type, index);
+			num_moves++;
+		}
+		// castling queenside
+		// generally the same as kingside, but with 00001110 being 14 representing the squares which need to be free
+		if (((castling & (1 + 3 * to_play)) != 0) && !(is_attacked(board, to_play, loc >> 1)) && (((other_pieces ^ same_pieces) & ((unsigned long long)14 << (56 * to_play))) == 0)) {
+			add_move(moves[num_moves], loc, loc >> 2, 3, piece_type, index);
+			num_moves++;
+		}
 	}
 	return num_moves;
 }
@@ -560,13 +594,13 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 		struct Piece* piece_list, unsigned long long* past_hash_list, unsigned long long* zobrist_numbers, unsigned long long* removed_hash) {
 	// the piece which moves is encoded within the flag of the move
 	int i;
-	int index = (int)move[2] >> 8;
+	int index = (int)(move[2] >> 8);
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
 	int castling = extras[0];
 	int to_play = extras[1];
 	int ply_counter = extras[2];
-	int capture_type = 12;
+	int capture_index = 32;
 
 	// whether a move can be reversed or not (used for 50 move rule and to help the efficiency of draw by repetition searches)
 	// initialised to whether or not the move is a pawn move
@@ -606,7 +640,7 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
 		// the bits in the position that the rook currently is and will move to (as 1 refers to a1). This is then shifted for castling as black by 
 		// 7 ranks * 8 squares = 56 squares
-		board[6 * to_play + 3] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
 		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * to_play;
 		irreversible = true;
 
@@ -618,13 +652,13 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 	// castling queenside
 	else if (flag == 3) {
 		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[6 * to_play + 3] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		piece_list[12 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
 		irreversible = true;
 
-		// applies the movement of the rook to the hash (192 is the index for a white rook on a1, 194 on c1, 440 is difference in index between these and
+		// applies the movement of the rook to the hash (192 is the index for a white rook on a1, 195 on d1, 440 is difference in index between these and
 		// the equivalent black rook positions on a8 and c8.)
-		hash[0] ^= zobrist_numbers[194 + 440 * to_play];
+		hash[0] ^= zobrist_numbers[195 + 440 * to_play];
 		hash[0] ^= zobrist_numbers[192 + 440 * to_play];
 	}
 	// en passant
@@ -632,36 +666,52 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 		unsigned long long target_pos;
 		if (to_play == 0) {
 			target_pos = move[1] >> 8;
-			capture_type = 6;
 		}
 		else {
 			target_pos = move[1] << 8;
-			capture_type = 0;
 		}
-		// loops through the pawns in the piece_list to find the one which hash been captured
+		// loops through the pawns in the piece_list to find the one which has been captured
 		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 8; i++) {
-			if ((piece_list[i].loc & target_pos) != 0) {
+			if (!piece_list[i].captured && (piece_list[i].loc & target_pos) != 0) {
 				piece_list[i].captured = true;
-				board[capture_type] ^= target_pos;
+				board[piece_list[i].type] ^= target_pos;
+				capture_index = i;
 				break;
 			}
 		}
 
-		// updates the hash... 2 * to_play - 1 returns 1 if black, and -1 if white, so second_square_rank + 2 * to_play - 1 gives the rank of the piece taken.
-		hash[0] ^= zobrist_numbers[64 * capture_type + 8 * (second_square_rank + 2 * to_play - 1) + second_square_file];
+		// updates the hash... the piece taken will be on the same rank as the first part of the move and the same file as the second.
+		hash[0] ^= zobrist_numbers[64 * piece_list[capture_index].type + 8 * first_square_rank + second_square_file];
 	}
 	// other captures
 	else if ((flag & 4) != 0) {
 		// loops through the piece_list to find the piece which has been captured.
 		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 16; i++) {
-			if ((piece_list[i].loc & move[1]) != 0) {
+			if (!piece_list[i].captured && (piece_list[i].loc & move[1]) != 0) {
 				piece_list[i].captured = true;
-				capture_type = piece_list[i].type;
-				board[capture_type] ^= move[1];
+				board[piece_list[i].type] ^= move[1];
+				capture_index = i;
 				irreversible = true;
 
+				// removes queenside castling for white if the rook on a1 is taken
+				if (piece_list[i].type == 3 && move[1] == (unsigned long long)1) {
+					extras[0] &= 14;
+				}
+				// removes kingside castling for white if the rook on h1 is taken
+				else if (piece_list[i].type == 3 && move[1] == (unsigned long long)1 << 7) {
+					extras[0] &= 13;
+				}
+				// removes queenside castling for black if the rook on a8 is taken
+				else if (piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 56) {
+					extras[0] &= 11;
+				}
+				// removes kingside castling for black if the rook on h8 is taken
+				else if (piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 63) {
+					extras[0] &= 7;
+				}
+
 				// updates the hash
-				hash[0] ^= zobrist_numbers[64 * capture_type + 8 * second_square_rank + second_square_file];
+				hash[0] ^= zobrist_numbers[64 * piece_list[i].type + 8 * second_square_rank + second_square_file];
 				break;
 			}
 		}
@@ -669,7 +719,8 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 
 	// handles pawn promotion
 	if ((flag & 8) != 0) {
-		int promotion_type = flag & 3 + 1 + 6 * to_play;
+		// flag & 3 gives 0 for knight, 1 for bishop, 2 for rook, 3 for queen... + 1 + 6 * to_play transforms that to the actual type of piece. 
+		int promotion_type = (flag & 3) + 1 + 6 * to_play;
 
 		// removes the pawn
 		board[piece] ^= move[1];
@@ -722,21 +773,22 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 			extras[0] &= 13;
 		}
 		// removes queenside castling for black if the rook on a8 moves
-		else if (piece == 3 && move[0] == (unsigned long long)1 << 56) {
+		else if (piece == 9 && move[0] == (unsigned long long)1 << 56) {
 			extras[0] &= 11;
 		}
 		// removes kingside castling for black if the rook on h8 moves
-		else if (piece == 3 && move[0] == (unsigned long long)1 << 63) {
+		else if (piece == 9 && move[0] == (unsigned long long)1 << 63) {
 			extras[0] &= 7;
 		}
 		hash[0] ^= zobrist_numbers[768 + extras[0]];
+
 	}
 	// records the removed hash so that the past_hash_list can be returned to its original state if the move is unapplied.
 	removed_hash[0] = past_hash_list[extras[2]];
 	// record of the hashes of past games, used for draw by repetition
 	past_hash_list[extras[2]] = hash[0];
 
-	return capture_type;
+	return capture_index;
 }
 
 /*
@@ -759,14 +811,15 @@ previous_last_move: the last_move from before move was applied, meaning that the
 Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
-void unapply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* hash, unsigned long long removed_hash, struct Piece* piece_list, int captured, int previous_castling, int previous_ply_counter, unsigned long long* past_hash_list, 
-	unsigned long long* zobrist_numbers, unsigned long long* last_move, unsigned long long* previous_last_move) {
-	// the piece which moves is encoded within the flag of the move
+void unapply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* hash, unsigned long long removed_hash, struct Piece* piece_list, int capture_index, int previous_castling, int previous_ply_counter, unsigned long long* past_hash_list, 
+		unsigned long long* zobrist_numbers, unsigned long long* last_move, unsigned long long* previous_last_move) {
 	int i;
-	int index = (int)move[2] >> 8;
+	int index = (int)(move[2] >> 8);
+	// the piece which moves is encoded within the flag of the move
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
-	int to_play = extras[1];
+	// as the move has already been applied, the to_play variable now holds the opponent instead of the player who's move we're undoing.
+	int to_play = 1 - extras[1];
 
 	// unapplies the move to the bitboard for that piece
 	board[piece] ^= move[0] | move[1];
@@ -777,53 +830,30 @@ void unapply(unsigned long long* board, unsigned long long* move, int* extras, u
 		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
 		// the bits in the position that the rook currently is and was originally (as 1 refers to a1). This is then shifted for castling as black by 
 		// 7 ranks * 8 squares = 56 squares
-		board[6 * to_play + 3] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
 		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * to_play;
 	}
 	// castling queenside
 	else if (flag == 3) {
 		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[6 * to_play + 3] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		piece_list[12 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
 	}
-	// en passant
-	else if (flag == 5) {
-		unsigned long long target_pos;
-		if (to_play == 0) {
-			target_pos = move[1] >> 8;
-		}
-		else {
-			target_pos = move[1] << 8;
-		}
-		// loops through the pawns in the piece_list to find the one which hash been captured
-		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 8; i++) {
-			if (((piece_list[i].loc & target_pos) != 0) && piece_list[i].type == captured) {
-				piece_list[i].captured = false;
-				board[captured] ^= target_pos;
-				break;
-			}
-		}
-	}
-	// other captures
+	// replaces captured pieces
 	else if ((flag & 4) != 0) {
-		// loops through the piece_list to find the piece which has been captured.
-		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 16; i++) {
-			if ((piece_list[i].loc & move[1]) != 0 && piece_list[i].type == captured) {
-				piece_list[i].captured = false;
-				board[captured] ^= move[1];
-				break;
-			}
-		}
+		piece_list[capture_index].captured = false;
+		board[piece_list[capture_index].type] ^= piece_list[capture_index].loc;
 	}
 
 	// handles pawn promotion
 	if ((flag & 8) != 0) {
-		int promotion_type = flag & 3 + 1 + 6 * to_play;
+		int promotion_type = (flag & 3) + 1 + 6 * to_play;
 
-		// replaces the pawn
-		board[piece] ^= move[0];
+		// the pawn will have reappeared on both its starting and finishing square as it is undone, 
+		// so it needs to be removed from its finishing square again.
+		board[piece] ^= move[1];
 		// removes the promoted piece
-		board[promotion_type] ^= move[0];
+		board[promotion_type] ^= move[1];
 		// changes the type of the piece in the piece_list back to a pawn
 		piece_list[index].type = piece;
 	}
@@ -865,16 +895,16 @@ int quick_apply(unsigned long long* board, unsigned long long* move, int to_play
 	// applies captures
 	// en passant for white
 	if (flag == 5 && to_play == 0) {
-		board[6] ^= (move[0] >> 8);
+		board[6] ^= (move[1] >> 8);
 		captured = 6;
 	}
 	// en passant for black
 	else if (flag == 5 && to_play == 1) {
-		board[0] ^= (move[0] << 8);
+		board[0] ^= (move[1] << 8);
 		captured = 0;
 	}
 	// other captures
-	else if (4 == (flag & 4)) {
+	else if ((flag & 4) != 0) {
 		for (int i = (1 - to_play) * 6; i < 6 * (1 - to_play) + 6; i++) {
 			if ((board[i] & move[1]) != 0) {
 				board[i] ^= (board[i] & move[1]);
@@ -889,12 +919,12 @@ int quick_apply(unsigned long long* board, unsigned long long* move, int to_play
 		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
 		// the bits in the position that the rook currently is and will move to (as 1 refers to a1). This is then shifted for castling as black by 
 		// 7 ranks * 8 squares = 56 squares
-		board[6 * to_play + 3] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
 	}
 	// castling queenside
 	else if (flag == 3) {
 		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[6 * to_play + 3] ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
 	}
 
 	// returns the type of piece which has been captured, allowing this capture to be undone if required
@@ -923,14 +953,14 @@ void quick_undo(unsigned long long* board, unsigned long long* move, int to_play
 	// undoes captures
 	// en passant for white
 	if (flag == 5 && to_play == 0) {
-		board[6] ^= (move[0] << 8);
+		board[6] ^= (move[1] >> 8);
 	}
 	// en passant for black
 	else if (flag == 5 && to_play == 1) {
-		board[0] ^= (move[0] >> 8);
+		board[0] ^= (move[1] << 8);
 	}
 	// other captures
-	else if (4 == (flag & 4)) {
+	else if ((flag & 4) != 0) {
 		board[captured] ^= move[1];
 	}
 
@@ -984,6 +1014,7 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 		other_pieces ^= board[i + other_p];
 		same_pieces ^= board[i + p];
 	}
+
 
 	// loops through each of the pieces for the side to play, to generate the legal moves for each of them.
 	for (i = to_play * 16; i < 16 + to_play * 16; i++) {
@@ -1246,7 +1277,7 @@ Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
 void perft_all(unsigned long long* board, unsigned long long* last_move, unsigned long long* past_hash_list, int castling, struct Piece* piece_list, int to_play, unsigned long long hash,
-		int ply_counter, int depth, int* answers, unsigned long long* zobrist_numbers) {
+	int ply_counter, int depth, unsigned long long* answers, unsigned long long* zobrist_numbers) {
 	// checks if the position is at the final depth. if so, it adds the values to the answers, the order of these being: 
 	// Nodes, Captures, En passant, Castling, Promotion, Checks, Checkmates
 	if (depth == 0) {
@@ -1266,19 +1297,21 @@ void perft_all(unsigned long long* board, unsigned long long* last_move, unsigne
 		}
 
 		// looks for promotions
-		if ((last_move[2] & 8) != 0){
+		if ((last_move[2] & 8) != 0) {
 			answers[4]++;
 		}
 
 		// looks for checks
 		if (is_attacked(board, to_play, piece_list[15 + 16 * to_play].loc)) {
 			answers[5]++;
-			if (look_for_mates(board, to_play, last_move, piece_list) != 0)  {
+
+			if (look_for_mates(board, to_play, last_move, piece_list) != 0) {
 				answers[6]++;
 			}
 		}
 		return;
 	}
+
 	unsigned long long moves[220][3];
 	unsigned long long previous_last_move[3];
 	int previous_ply_counter = ply_counter;
@@ -1296,14 +1329,14 @@ void perft_all(unsigned long long* board, unsigned long long* last_move, unsigne
 		previous_last_move[i] = last_move[i];
 	}
 
-
 	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
 
-	for (i = 0; i < num_moves; i++){
+	for (i = 0; i < num_moves; i++) {
 		captured = apply(board, moves[i], extras, hash_as_array, last_move, piece_list, past_hash_list, zobrist_numbers, removed_hash);
 		perft_all(board, last_move, past_hash_list, extras[0], piece_list, extras[1], hash_as_array[0], extras[2], depth - 1, answers, zobrist_numbers);
-		unapply(board, moves[i], extras, hash_as_array, removed_hash[0], piece_list, captured, previous_castling, previous_ply_counter, past_hash_list, 
+		unapply(board, moves[i], extras, hash_as_array, removed_hash[0], piece_list, captured, previous_castling, previous_ply_counter, past_hash_list,
 			zobrist_numbers, last_move, previous_last_move);
+
 	}
 }
 
@@ -1314,7 +1347,7 @@ Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
 void perft_nodes(unsigned long long* board, unsigned long long* last_move, int castling, struct Piece* piece_list, int to_play, unsigned long long hash, unsigned long long* past_hash_list,
-	int ply_counter, int depth, int* answers, unsigned long long* zobrist_numbers) {
+	int ply_counter, int depth, unsigned long long* answers, unsigned long long* zobrist_numbers) {
 	unsigned long long moves[220][3];
 	unsigned long long previous_last_move[3];
 	int previous_ply_counter = ply_counter;
