@@ -7,7 +7,7 @@
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is version 297.\n");
+	printf(" This is game mechanics version 308.\n");
 }
 
 // structure defining the key elements for each piece
@@ -20,6 +20,17 @@ struct Piece {
 	int type;
 	// whether this piece has been captured, true or false
 	bool captured;
+};
+
+struct Game {
+	struct Piece piece_list[32];
+	unsigned long long board[12];
+	unsigned long long hash;
+	unsigned long long past_hash_list[100];
+	unsigned long long last_move[3];
+	int to_play;
+	int ply_counter;
+	int castling;
 };
 
 // returns the rank given by a single bit on a bitboard (or if there is more than one bit, the rank of the bit with the highest rank)
@@ -590,16 +601,12 @@ removed_hash: used to return the hash which was removed from the past_hash_list,
 Last Modified: 8/9/2021
 Last Modified by: Arkleseisure
 */
-int apply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* hash, unsigned long long* last_move, 
-		struct Piece* piece_list, unsigned long long* past_hash_list, unsigned long long* zobrist_numbers, unsigned long long* removed_hash) {
+int apply(struct Game* game, unsigned long long* move, unsigned long long* zobrist_numbers, unsigned long long* removed_hash) {
 	// the piece which moves is encoded within the flag of the move
 	int i;
 	int index = (int)(move[2] >> 8);
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
-	int castling = extras[0];
-	int to_play = extras[1];
-	int ply_counter = extras[2];
 	int capture_index = 32;
 
 	// whether a move can be reversed or not (used for 50 move rule and to help the efficiency of draw by repetition searches)
@@ -613,105 +620,105 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 
 	// if there was the possibility of en passant this move, then that must be removed from the hash
 	// the first statement checks for a double pawn move last move, the second for a pawn of the opposite colour either side of the arrival square
-	int last_move_file = file(last_move[1]);
-	if ((last_move[2] & 15) == 1 && 
-		(((((last_move[1] >> 1) & board[6 * to_play]) != 0) && last_move_file != 0) || 
-			((((last_move[1] << 1) & board[6 * to_play]) != 0) && last_move_file != 7))) {
-		hash[0] ^= zobrist_numbers[784 + last_move_file];
+	int last_move_file = file(game->last_move[1]);
+	if ((game->last_move[2] & 15) == 1 && 
+		(((((game->last_move[1] >> 1) & game->board[6 * game->to_play]) != 0) && last_move_file != 0) || 
+			((((game->last_move[1] << 1) & game->board[6 * game->to_play]) != 0) && last_move_file != 7))) {
+		game->hash ^= zobrist_numbers[784 + last_move_file];
 	}
 
 	// applies the move to the bitboard for that piece
-	board[piece] ^= move[0] | move[1];
-	piece_list[index].loc ^= move[0] | move[1];
+	game->board[piece] ^= move[0] | move[1];
+	game->piece_list[index].loc ^= move[0] | move[1];
 
 	// applies the movement of the piece to the hash of the position
-	hash[0] ^= zobrist_numbers[64 * piece + 8 * first_square_rank + first_square_file];
-	hash[0] ^= zobrist_numbers[64 * piece + 8 * second_square_rank + second_square_file];
+	game->hash ^= zobrist_numbers[64 * piece + 8 * first_square_rank + first_square_file];
+	game->hash ^= zobrist_numbers[64 * piece + 8 * second_square_rank + second_square_file];
 
 	// if the move is a double pawn move and there is a pawn on one of the sides then the possibility of en passant must be added to the hash
 	if (flag == 1 && 
-			(((((move[1] >> 1) & board[6 * (1 - to_play)]) != 0) && first_square_file != 0) ||
-			((((move[1] << 1) & board[6 * (1 - to_play)]) != 0) && first_square_file != 7))) {
+			(((((move[1] >> 1) & game->board[6 * (1 - game->to_play)]) != 0) && first_square_file != 0) ||
+			((((move[1] << 1) & game->board[6 * (1 - game->to_play)]) != 0) && first_square_file != 7))) {
 		// 784 = 12 * 64 + 16 is the initial index of the en passant files.
-		hash[0] ^= zobrist_numbers[784 + first_square_file];
+		game->hash ^= zobrist_numbers[784 + first_square_file];
 	}
 	// castling kingside
 	else if (flag == 2) {
 		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
 		// the bits in the position that the rook currently is and will move to (as 1 refers to a1). This is then shifted for castling as black by 
 		// 7 ranks * 8 squares = 56 squares
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
-		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * to_play;
+		game->board[3 + 6 * game->to_play] ^= ((unsigned long long)(0xA0)) << 56 * game->to_play;
+		game->piece_list[13 + 16 * game->to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * game->to_play;
 		irreversible = true;
 
 		// applies the movement of the rook to the hash (199 is the index for a white rook on h1, 197 on f1, 440 is difference in index between these and
 		// the equivalent black rook positions on f8 and h8.)
-		hash[0] ^= zobrist_numbers[199 + 440 * to_play];
-		hash[0] ^= zobrist_numbers[197 + 440 * to_play];
+		game->hash ^= zobrist_numbers[199 + 440 * game->to_play];
+		game->hash ^= zobrist_numbers[197 + 440 * game->to_play];
 	}
 	// castling queenside
 	else if (flag == 3) {
 		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-		piece_list[12 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		game->board[3 + 6 * game->to_play] ^= ((unsigned long long)(0x9)) << 56 * game->to_play;
+		game->piece_list[12 + 16 * game->to_play].loc ^= ((unsigned long long)(0x9)) << 56 * game->to_play;
 		irreversible = true;
 
 		// applies the movement of the rook to the hash (192 is the index for a white rook on a1, 195 on d1, 440 is difference in index between these and
 		// the equivalent black rook positions on a8 and c8.)
-		hash[0] ^= zobrist_numbers[195 + 440 * to_play];
-		hash[0] ^= zobrist_numbers[192 + 440 * to_play];
+		game->hash ^= zobrist_numbers[195 + 440 * game->to_play];
+		game->hash ^= zobrist_numbers[192 + 440 * game->to_play];
 	}
 	// en passant
 	else if (flag == 5) {
 		unsigned long long target_pos;
-		if (to_play == 0) {
+		if (game->to_play == 0) {
 			target_pos = move[1] >> 8;
 		}
 		else {
 			target_pos = move[1] << 8;
 		}
 		// loops through the pawns in the piece_list to find the one which has been captured
-		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 8; i++) {
-			if (!piece_list[i].captured && (piece_list[i].loc & target_pos) != 0) {
-				piece_list[i].captured = true;
-				board[piece_list[i].type] ^= target_pos;
+		for (i = (1 - game->to_play) * 16; i < 16 * (1 - game->to_play) + 8; i++) {
+			if (!game->piece_list[i].captured && (game->piece_list[i].loc & target_pos) != 0) {
+				game->piece_list[i].captured = true;
+				game->board[game->piece_list[i].type] ^= target_pos;
 				capture_index = i;
 				break;
 			}
 		}
 
 		// updates the hash... the piece taken will be on the same rank as the first part of the move and the same file as the second.
-		hash[0] ^= zobrist_numbers[64 * piece_list[capture_index].type + 8 * first_square_rank + second_square_file];
+		game->hash ^= zobrist_numbers[64 * game->piece_list[capture_index].type + 8 * first_square_rank + second_square_file];
 	}
 	// other captures
 	else if ((flag & 4) != 0) {
 		// loops through the piece_list to find the piece which has been captured.
-		for (i = (1 - to_play) * 16; i < 16 * (1 - to_play) + 16; i++) {
-			if (!piece_list[i].captured && (piece_list[i].loc & move[1]) != 0) {
-				piece_list[i].captured = true;
-				board[piece_list[i].type] ^= move[1];
+		for (i = (1 - game->to_play) * 16; i < 16 * (1 - game->to_play) + 16; i++) {
+			if (!game->piece_list[i].captured && (game->piece_list[i].loc & move[1]) != 0) {
+				game->piece_list[i].captured = true;
+				game->board[game->piece_list[i].type] ^= move[1];
 				capture_index = i;
 				irreversible = true;
 
 				// removes queenside castling for white if the rook on a1 is taken
-				if (piece_list[i].type == 3 && move[1] == (unsigned long long)1) {
-					extras[0] &= 14;
+				if (game->piece_list[i].type == 3 && move[1] == (unsigned long long)1) {
+					game->castling &= 14;
 				}
 				// removes kingside castling for white if the rook on h1 is taken
-				else if (piece_list[i].type == 3 && move[1] == (unsigned long long)1 << 7) {
-					extras[0] &= 13;
+				else if (game->piece_list[i].type == 3 && move[1] == (unsigned long long)1 << 7) {
+					game->castling &= 13;
 				}
 				// removes queenside castling for black if the rook on a8 is taken
-				else if (piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 56) {
-					extras[0] &= 11;
+				else if (game->piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 56) {
+					game->castling &= 11;
 				}
 				// removes kingside castling for black if the rook on h8 is taken
-				else if (piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 63) {
-					extras[0] &= 7;
+				else if (game->piece_list[i].type == 9 && move[1] == (unsigned long long)1 << 63) {
+					game->castling &= 7;
 				}
 
 				// updates the hash
-				hash[0] ^= zobrist_numbers[64 * piece_list[i].type + 8 * second_square_rank + second_square_file];
+				game->hash ^= zobrist_numbers[64 * game->piece_list[i].type + 8 * second_square_rank + second_square_file];
 				break;
 			}
 		}
@@ -720,73 +727,74 @@ int apply(unsigned long long* board, unsigned long long* move, int* extras, unsi
 	// handles pawn promotion
 	if ((flag & 8) != 0) {
 		// flag & 3 gives 0 for knight, 1 for bishop, 2 for rook, 3 for queen... + 1 + 6 * to_play transforms that to the actual type of piece. 
-		int promotion_type = (flag & 3) + 1 + 6 * to_play;
+		int promotion_type = (flag & 3) + 1 + 6 * game->to_play;
 
 		// removes the pawn
-		board[piece] ^= move[1];
+		game->board[piece] ^= move[1];
 		// adds the new piece
-		board[promotion_type] ^= move[1];
+		game->board[promotion_type] ^= move[1];
 		// changes the type of the piece in the piece_list
-		piece_list[index].type = promotion_type;
+		game->piece_list[index].type = promotion_type;
 
 		// updates the hash
-		hash[0] ^= zobrist_numbers[64 * piece + 8 * second_square_rank + second_square_file];
-		hash[0] ^= zobrist_numbers[64 * promotion_type + 8 * second_square_rank + second_square_file];
+		game->hash ^= zobrist_numbers[64 * piece + 8 * second_square_rank + second_square_file];
+		game->hash ^= zobrist_numbers[64 * promotion_type + 8 * second_square_rank + second_square_file];
+	}
+
+	// changes the value of the castling variable (as it is extras[0], to return it the value of extras needs to be changed)
+	if (game->castling != 0) {
+		// 768 = 12 * 64 is the starting index of the zobrist numbers relating to castling
+		game->hash ^= zobrist_numbers[768 + game->castling];
+
+		// removes castling king/queenside for white if the white king has moved
+		if (piece == 5) {
+			game->castling &= 12;
+		}
+		// removes castling king/queenside for black if the black king has moved
+		else if (piece == 11) {
+			game->castling &= 3;
+		}
+		// removes queenside castling for white if the rook on a1 moves
+		else if (piece == 3 && move[0] == (unsigned long long)1) {
+			game->castling &= 14;
+		}
+		// removes kingside castling for white if the rook on h1 moves
+		else if (piece == 3 && move[0] == (unsigned long long)1 << 7) {
+			game->castling &= 13;
+		}
+		// removes queenside castling for black if the rook on a8 moves
+		else if (piece == 9 && move[0] == (unsigned long long)1 << 56) {
+			game->castling &= 11;
+		}
+		// removes kingside castling for black if the rook on h8 moves
+		else if (piece == 9 && move[0] == (unsigned long long)1 << 63) {
+			game->castling &= 7;
+		}
+		game->hash ^= zobrist_numbers[768 + game->castling];
+
 	}
 
 	// changes the player
-	extras[1] = 1 - extras[1];
-	hash[0] ^= zobrist_numbers[792];
+	game->to_play = 1 - game->to_play;
+	game->hash ^= zobrist_numbers[792];
 
 	// sets the last move to the move which has just been applied
 	for (int i = 0; i < 3; i++) {
-		last_move[i] = move[i];
+		game->last_move[i] = move[i];
 	}
 
 	// changes the value of the ply_counter, which accounts for the 50 move rule
 	if (irreversible) {
-		extras[2] = 0;
+		game->ply_counter = 0;
 	}
 	else {
-		extras[2]++;
+		game->ply_counter++;
 	}
 
-	// changes the value of the castling variable (as it is extras[0], to return it the value of extras needs to be changed)
-	if (castling != 0) {
-		// 768 = 12 * 64 is the starting index of the zobrist numbers relating to castling
-		hash[0] ^= zobrist_numbers[768 + castling];
-
-		// removes castling king/queenside for white if the white king has moved
-		if (piece == 5) {
-			extras[0] &= 12;
-		}
-		// removes castling king/queenside for black if the black king has moved
-		else if (piece == 11) {
-			extras[0] &= 3;
-		}
-		// removes queenside castling for white if the rook on a1 moves
-		else if (piece == 3 && move[0] == (unsigned long long)1) {
-			extras[0] &= 14;
-		}
-		// removes kingside castling for white if the rook on h1 moves
-		else if (piece == 3 && move[0] == (unsigned long long)1 << 7) {
-			extras[0] &= 13;
-		}
-		// removes queenside castling for black if the rook on a8 moves
-		else if (piece == 9 && move[0] == (unsigned long long)1 << 56) {
-			extras[0] &= 11;
-		}
-		// removes kingside castling for black if the rook on h8 moves
-		else if (piece == 9 && move[0] == (unsigned long long)1 << 63) {
-			extras[0] &= 7;
-		}
-		hash[0] ^= zobrist_numbers[768 + extras[0]];
-
-	}
 	// records the removed hash so that the past_hash_list can be returned to its original state if the move is unapplied.
-	removed_hash[0] = past_hash_list[extras[2]];
+	removed_hash[0] = game->past_hash_list[game->ply_counter];
 	// record of the hashes of past games, used for draw by repetition
-	past_hash_list[extras[2]] = hash[0];
+	game->past_hash_list[game->ply_counter] = game->hash;
 
 	return capture_index;
 }
@@ -811,65 +819,62 @@ previous_last_move: the last_move from before move was applied, meaning that the
 Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
-void unapply(unsigned long long* board, unsigned long long* move, int* extras, unsigned long long* hash, unsigned long long removed_hash, struct Piece* piece_list, int capture_index, int previous_castling, int previous_ply_counter, unsigned long long* past_hash_list, 
-		unsigned long long* zobrist_numbers, unsigned long long* last_move, unsigned long long* previous_last_move) {
+void unapply(struct Game* game, unsigned long long* move, unsigned long long removed_hash, int capture_index, int previous_castling, 
+	int previous_ply_counter, unsigned long long* previous_last_move) {
 	int i;
 	int index = (int)(move[2] >> 8);
 	// the piece which moves is encoded within the flag of the move
 	int piece = (move[2] >> 4) & 15;
 	int flag = move[2] & 15;
 	// as the move has already been applied, the to_play variable now holds the opponent instead of the player who's move we're undoing.
-	int to_play = 1 - extras[1];
+	game->to_play = 1 - game->to_play;
 
 	// unapplies the move to the bitboard for that piece
-	board[piece] ^= move[0] | move[1];
-	piece_list[index].loc ^= move[0] | move[1];
+	game->board[piece] ^= move[0] | move[1];
+	game->piece_list[index].loc ^= move[0] | move[1];
 
 	// castling kingside
 	if (flag == 2) {
 		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
 		// the bits in the position that the rook currently is and was originally (as 1 refers to a1). This is then shifted for castling as black by 
 		// 7 ranks * 8 squares = 56 squares
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
-		piece_list[13 + 16 * to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * to_play;
+		game->board[3 + 6 * game->to_play] ^= ((unsigned long long)(0xA0)) << 56 * game->to_play;
+		game->piece_list[13 + 16 * game->to_play].loc ^= ((unsigned long long)(0xA0)) << 56 * game->to_play;
 	}
 	// castling queenside
 	else if (flag == 3) {
 		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-		piece_list[12 + 16 * to_play].loc ^= ((unsigned long long)(0x9)) << 56 * to_play;
+		game->board[3 + 6 * game->to_play] ^= ((unsigned long long)(0x9)) << 56 * game->to_play;
+		game->piece_list[12 + 16 * game->to_play].loc ^= ((unsigned long long)(0x9)) << 56 * game->to_play;
 	}
 	// replaces captured pieces
 	else if ((flag & 4) != 0) {
-		piece_list[capture_index].captured = false;
-		board[piece_list[capture_index].type] ^= piece_list[capture_index].loc;
+		game->piece_list[capture_index].captured = false;
+		game->board[game->piece_list[capture_index].type] ^= game->piece_list[capture_index].loc;
 	}
 
 	// handles pawn promotion
 	if ((flag & 8) != 0) {
-		int promotion_type = (flag & 3) + 1 + 6 * to_play;
+		int promotion_type = (flag & 3) + 1 + 6 * game->to_play;
 
 		// the pawn will have reappeared on both its starting and finishing square as it is undone, 
 		// so it needs to be removed from its finishing square again.
-		board[piece] ^= move[1];
+		game->board[piece] ^= move[1];
 		// removes the promoted piece
-		board[promotion_type] ^= move[1];
+		game->board[promotion_type] ^= move[1];
 		// changes the type of the piece in the piece_list back to a pawn
-		piece_list[index].type = piece;
+		game->piece_list[index].type = piece;
 	}
 
 	for (i = 0; i < 3; i++) {
-		last_move[i] = previous_last_move[i];
+		game->last_move[i] = previous_last_move[i];
 	}
-
-	// changes the player
-	extras[1] = 1 - extras[1];
 	
 	// undoes the changes to the castling, ply_counter, hash and past_hash_list variables.
-	extras[0] = previous_castling;
-	past_hash_list[extras[2]] = removed_hash;
-	extras[2] = previous_ply_counter;
-	hash[0] = past_hash_list[extras[2]];
+	game->castling = previous_castling;
+	game->past_hash_list[game->ply_counter] = removed_hash;
+	game->ply_counter = previous_ply_counter;
+	game->hash = game->past_hash_list[game->ply_counter];
 }
 
 /*
@@ -987,7 +992,7 @@ the added legal_moves array to put the moves in.
 Last Modified: 10/08/2021
 Last Modified by: Arkleseisure
 */
-int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3], int castling, int to_play, unsigned long long* last_move, struct Piece* piece_list) {
+int legal_moves(struct Game* game, unsigned long long legal_moves[220][3]) {
 	// integers used in for loops
 	int i;
 	int j;
@@ -1000,8 +1005,8 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 	int captured;
 
 	// the first 6 bitboards in board hold the white pieces, the next 6 black... These store this shift for white and for black so it doesn't have to be calculated every time.
-	int p = 6 * to_play;
-	int other_p = 6 * (1 - to_play);
+	int p = 6 * game->to_play;
+	int other_p = 6 * (1 - game->to_play);
 
 	// holds the pseudolegal moves for one piece
 	unsigned long long piece_legal_moves[28][3];
@@ -1011,50 +1016,50 @@ int legal_moves(unsigned long long* board, unsigned long long legal_moves[220][3
 	unsigned long long same_pieces = 0;
 
 	for (i = 0; i < 6; i++) {
-		other_pieces ^= board[i + other_p];
-		same_pieces ^= board[i + p];
+		other_pieces ^= game->board[i + other_p];
+		same_pieces ^= game->board[i + p];
 	}
 
 
 	// loops through each of the pieces for the side to play, to generate the legal moves for each of them.
-	for (i = to_play * 16; i < 16 + to_play * 16; i++) {
-		if (!piece_list[i].captured) {
+	for (i = game->to_play * 16; i < 16 + game->to_play * 16; i++) {
+		if (!game->piece_list[i].captured) {
 			// generates the legal moves for that piece depending on its piece type.
-			switch (piece_list[i].type % 6) {
+			switch (game->piece_list[i].type % 6) {
 			case 0:
-				piece_moves = get_pawn_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, last_move);
+				piece_moves = get_pawn_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play, game->last_move);
 				break;
 			case 1:
-				piece_moves = get_knight_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				piece_moves = get_knight_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play);
 				break;
 			case 2:
-				piece_moves = get_bishop_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				piece_moves = get_bishop_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play);
 				break;
 			case 3:
-				piece_moves = get_rook_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				piece_moves = get_rook_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play);
 				break;
 			case 4:
-				piece_moves = get_queen_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play);
+				piece_moves = get_queen_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play);
 				break;
 			case 5:
-				piece_moves = get_king_moves(same_pieces, other_pieces, piece_list[i].loc, piece_legal_moves, i, to_play, castling, board);
+				piece_moves = get_king_moves(same_pieces, other_pieces, game->piece_list[i].loc, piece_legal_moves, i, game->to_play, game->castling, game->board);
 				break;
 			}
 
 			// loops through each of the moves generated to see if it's in check.
 			for (j = 0; j < piece_moves; j++) {
 				// move is applied to the position efficiently (factors which don't change whether the resulting position is check aren't applied)
-				captured = quick_apply(board, piece_legal_moves[j], to_play, piece_list);
+				captured = quick_apply(game->board, piece_legal_moves[j], game->to_play, game->piece_list);
 
 				// if the resulting position is not check, the move is added to the array of legal moves. (the position passed in is that of the king of the relevant colour)
-				if (!(is_attacked(board, to_play, piece_list[15 + 16 * to_play].loc))) {
+				if (!(is_attacked(game->board, game->to_play, game->piece_list[15 + 16 * game->to_play].loc))) {
 					// the index and piece are already included within the flag so we don't need to add them.
 					add_move(legal_moves[num_moves], piece_legal_moves[j][0], piece_legal_moves[j][1], piece_legal_moves[j][2], 0, 0);
 					num_moves++;
 				}
 
 				// the move is undone from the position
-				quick_undo(board, piece_legal_moves[j], to_play, captured, piece_list);
+				quick_undo(game->board, piece_legal_moves[j], game->to_play, captured, game->piece_list);
 			}
 		}
 	}
@@ -1225,22 +1230,22 @@ Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
 UNTESTED
 */
-int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, int ply_counter, unsigned long long* past_hash_list, unsigned long long hash, unsigned long long* last_move) {
+int terminal(struct Game* game) {
 	int i;
 	int repetitions = 0;
 	int mates;
 
 	// checks if the 50 move rule has been reached
-	if (ply_counter >= 100) {
+	if (game->ply_counter >= 100) {
 		return 1;
 	}
 	// looks for repetitions... After the 50 move rule has been reset, no repetitions of positions before this point can occur, 
 	// and threefold repetition can only occur at least 3 moves after the reset, so we check that the move counter is at least 4 for efficiency purposes
-	else if (ply_counter >= 8) {
+	else if (game->ply_counter >= 8) {
 		// it is only a repetition if it is the same player to play, and so we only look at the moves where it is this player to play
-		for (i = ply_counter % 2; i < ply_counter; i += 2) {
+		for (i = game->ply_counter % 2; i < game->ply_counter; i += 2) {
 			// increments the repetition counter if this position is a repetition of the past board
-			if (hash == past_hash_list[i]) {
+			if (game->hash == game->past_hash_list[i]) {
 				repetitions++;
 				// if this position has occured 2 times in the past then this is the third repetition and so it is a draw
 				if (repetitions == 2) {
@@ -1251,17 +1256,17 @@ int terminal(unsigned long long* board, int to_play, struct Piece* piece_list, i
 	}
 
 	// gets draw by lack of material
-	if (draw_by_lack_of_material(piece_list)) {
+	if (draw_by_lack_of_material(game->piece_list)) {
 		return 1;
 	}
 
 	// look for mates function returns 0 by default, 1 if checkmate and 2 if stalemate
-	mates = look_for_mates(board, to_play, last_move, piece_list);
+	mates = look_for_mates(game->board, game->to_play, game->last_move, game->piece_list);
 	switch (mates) {
 	case 0:
 		return 3;
 	case 1:
-		return 2 * to_play;
+		return 2 * game->to_play;
 	case 2:
 		return 1;
 	}
@@ -1276,36 +1281,35 @@ These values are then compared to generally accepted values in order to check th
 Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
-void perft_all(unsigned long long* board, unsigned long long* last_move, unsigned long long* past_hash_list, int castling, struct Piece* piece_list, int to_play, unsigned long long hash,
-	int ply_counter, int depth, unsigned long long* answers, unsigned long long* zobrist_numbers) {
+void perft_all(struct Game* game, unsigned long long* answers, unsigned long long* zobrist_numbers, int depth) {
 	// checks if the position is at the final depth. if so, it adds the values to the answers, the order of these being: 
 	// Nodes, Captures, En passant, Castling, Promotion, Checks, Checkmates
 	if (depth == 0) {
 		answers[0]++;
 		// captures are noted in the 3rd bit of the flag
-		if ((last_move[2] & 4) != 0) {
+		if ((game->last_move[2] & 4) != 0) {
 			answers[1]++;
 			// denotes the previous move being en passant
-			if ((last_move[2] & 15) == 5) {
+			if ((game->last_move[2] & 15) == 5) {
 				answers[2]++;
 			}
 		}
 
 		// checks for kingside or queenside castling
-		if (((last_move[2] & 15) == 2) || ((last_move[2] & 15) == 3)) {
+		if (((game->last_move[2] & 15) == 2) || ((game->last_move[2] & 15) == 3)) {
 			answers[3]++;
 		}
 
 		// looks for promotions
-		if ((last_move[2] & 8) != 0) {
+		if ((game->last_move[2] & 8) != 0) {
 			answers[4]++;
 		}
 
 		// looks for checks
-		if (is_attacked(board, to_play, piece_list[15 + 16 * to_play].loc)) {
+		if (is_attacked(game->board, game->to_play, game->piece_list[15 + 16 * game->to_play].loc)) {
 			answers[5]++;
 
-			if (look_for_mates(board, to_play, last_move, piece_list) != 0) {
+			if (look_for_mates(game->board, game->to_play, game->last_move, game->piece_list) != 0) {
 				answers[6]++;
 			}
 		}
@@ -1314,29 +1318,25 @@ void perft_all(unsigned long long* board, unsigned long long* last_move, unsigne
 
 	unsigned long long moves[220][3];
 	unsigned long long previous_last_move[3];
-	int previous_ply_counter = ply_counter;
-	int previous_castling = castling;
+	int previous_ply_counter = game->ply_counter;
+	int previous_castling = game->castling;
 	int num_moves;
 	int captured;
 	int i;
 	// single variables are passed as arrays so that their values are returned automatically.
-	int extras[3] = { castling, to_play, ply_counter };
-	unsigned long long hash_as_array[1] = { hash };
 	unsigned long long removed_hash[1] = { 0 };
 
 	// this is required in order to be able to undo the move properly, as otherwise the last move is changed and there is no way to get it back.
 	for (i = 0; i < 3; i++) {
-		previous_last_move[i] = last_move[i];
+		previous_last_move[i] = game->last_move[i];
 	}
 
-	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
+	num_moves = legal_moves(game, moves);
 
 	for (i = 0; i < num_moves; i++) {
-		captured = apply(board, moves[i], extras, hash_as_array, last_move, piece_list, past_hash_list, zobrist_numbers, removed_hash);
-		perft_all(board, last_move, past_hash_list, extras[0], piece_list, extras[1], hash_as_array[0], extras[2], depth - 1, answers, zobrist_numbers);
-		unapply(board, moves[i], extras, hash_as_array, removed_hash[0], piece_list, captured, previous_castling, previous_ply_counter, past_hash_list,
-			zobrist_numbers, last_move, previous_last_move);
-
+		captured = apply(game, moves[i], zobrist_numbers, removed_hash);
+		perft_all(game, answers, zobrist_numbers, depth - 1);
+		unapply(game, moves[i], removed_hash[0], captured, previous_castling, previous_ply_counter, previous_last_move);
 	}
 }
 
@@ -1346,27 +1346,24 @@ Same as perft_all, but doesn't return all the debugging statistics and is instea
 Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
-void perft_nodes(unsigned long long* board, unsigned long long* last_move, int castling, struct Piece* piece_list, int to_play, unsigned long long hash, unsigned long long* past_hash_list,
-	int ply_counter, int depth, unsigned long long* answers, unsigned long long* zobrist_numbers) {
+void perft_nodes(struct Game* game, int depth, unsigned long long* answers, unsigned long long* zobrist_numbers) {
 	unsigned long long moves[220][3];
 	unsigned long long previous_last_move[3];
-	int previous_ply_counter = ply_counter;
-	int previous_castling = castling;
+	int previous_ply_counter = game->ply_counter;
+	int previous_castling = game->castling;
 	int num_moves;
 	int captured;
 	int i;
 	// single variables are passed as arrays so that their values are returned automatically.
-	int extras[3] = { castling, to_play, ply_counter };
-	unsigned long long hash_as_array[1] = { hash };
 	unsigned long long removed_hash[1];
 
 	// this is required in order to be able to undo the move properly, as otherwise the last move is changed and there is no way to get it back.
 	for (i = 0; i < 3; i++) {
-		previous_last_move[i] = last_move[i];
+		previous_last_move[i] = game->last_move[i];
 	}
 
 
-	num_moves = legal_moves(board, moves, castling, to_play, last_move, piece_list);
+	num_moves = legal_moves(game, moves);
 
 	if (depth == 1) {
 		answers[0] += num_moves;
@@ -1374,9 +1371,8 @@ void perft_nodes(unsigned long long* board, unsigned long long* last_move, int c
 	}
 
 	for (i = 0; i < num_moves; i++) {
-		captured = apply(board, moves[i], extras, hash_as_array, last_move, piece_list, past_hash_list, zobrist_numbers, removed_hash);
-		perft_nodes(board, last_move, extras[0], piece_list, extras[1], hash_as_array[0], past_hash_list, extras[2], depth - 1, answers, zobrist_numbers);
-		unapply(board, moves[i], extras, hash_as_array, removed_hash[0], piece_list, captured, previous_castling, previous_ply_counter, past_hash_list,
-			zobrist_numbers, last_move, previous_last_move);
+		captured = apply(game, moves[i], zobrist_numbers, removed_hash);
+		perft_nodes(game, depth - 1, answers, zobrist_numbers);
+		unapply(game, moves[i], removed_hash[0], captured, previous_castling, previous_ply_counter, previous_last_move);
 	}
 }
