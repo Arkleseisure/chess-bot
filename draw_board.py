@@ -248,7 +248,7 @@ Draws the images of the pieces to the screen
 board: 12 * bitboards, one for each piece type
 colour: perspective from which to draw the pieces, white (0) or black (1)
 
-Last Modified: 01/07/2021
+Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
 def draw_pieces(board, colour):
@@ -256,32 +256,38 @@ def draw_pieces(board, colour):
 
     # loops through each piece type
     for i in range(len(board)):
-        # gets the image for this piece, then scales it to the size of the squares
-        piece_type_image = pygame.image.load(image_names[i] + '.png')
-        piece_type_image = pygame.transform.scale(piece_type_image, [square_size, square_size])
-
         # creates string of the bitboard which can be looped through to find the pieces
         piece_type_bitboard = bin(board[i])[1:]
 
         # finds the positions of the pieces in the bitboard
         piece_positions = [len(piece_type_bitboard) - j - 1 for j, k in enumerate(piece_type_bitboard) if k == '1']
 
-        # gets the x and y positions to draw the pieces to and draws them there
+        # gets the position of each piece and draws it there
         for pos in piece_positions:
-            # due to the way the bitboards are set up, the first bit refers to a1, and the last to h8, going row by row
-            x_coord = pos % 8
-            y_coord = pos // 8
+            draw_piece(image_names[i], pos, colour)
 
-            # pygame indexes from the top left of the screen, so all the y coordinates are flipped
-            if colour == 0:
-                x = board_x + x_coord * square_size
-                y = board_y + (7 - y_coord) * square_size
-            else:
-                x = board_x + (7 - x_coord) * square_size
-                y = board_y + y_coord * square_size
 
-            # does the actual drawing of pieces
-            screen.blit(piece_type_image, (x, y))
+# given the piece type in the form 'Pw' (white pawn), 'Nb' (black knight), ... and its square number pos, as well as the orientation of the board 
+# (colour=0: white, colour=1: black), draws it to the screen.
+# Last Modified: 17/9/2021
+# Last Modified by: Arkleseisure
+def draw_piece(piece_type, pos, colour):
+    # due to the way the bitboards are set up, the first bit refers to a1, and the last to h8, going row by row
+    x_coord = pos % 8
+    y_coord = pos // 8
+    # gets the image for this piece, then scales it to the size of the squares
+    piece_type_image = pygame.image.load(piece_type + '.png')
+    piece_type_image = pygame.transform.scale(piece_type_image, [square_size, square_size])
+    # pygame indexes from the top left of the screen, so all the y coordinates are flipped
+    if colour == 0:
+        x = board_x + x_coord * square_size
+        y = board_y + (7 - y_coord) * square_size
+    else:
+        x = board_x + (7 - x_coord) * square_size
+        y = board_y + y_coord * square_size
+
+    # does the actual drawing of pieces
+    screen.blit(piece_type_image, (x, y))
 
 '''
 Draws the highlights onto the board
@@ -343,3 +349,36 @@ def print_board(board):
         for j in range(8):
             print(bin(board[i] + 2 ** 64)[8 * (j + 1) + 2: 8 * j + 2: -1])
         print()
+
+
+# prints text to the screen
+def print_screen(surface, text, x, y, size, colour, left_align=True, font_type="Calibri"):
+    # turns the text into a pygame surface
+    font = pygame.freetype.SysFont(font_type, size, True)
+    print_image, rect = font.render(text, colour)
+
+    # blits the new text surface onto the given surface and updates the screen
+    if not left_align:
+        text_width, text_height = print_image.get_size()
+        surface.blit(print_image, (x - text_width//2, y - text_height//2))
+    else:
+        surface.blit(print_image, (x, y))
+    return print_image.get_size()
+
+
+# when the game is over, this draws the result of the game to the screen
+# Last Modified: 17/9/2021
+# Last Modified by: Arkleseisure
+def draw_result(result):
+    colour = black
+    x = board_x + 4 * square_size
+    y = board_y + 3 * square_size
+    size = 2 * square_size
+    print_screen(screen, 'Game Over', x, y, size, colour, left_align=False)
+    if result == 1:
+        print_screen(screen, 'Draw', x, y + size, size, colour, left_align=False)
+    elif result == 0:
+        print_screen(screen, 'Black wins', x, y + size, size, colour, left_align=False)
+    elif result == 2:
+        print_screen(screen, 'White wins', x, y + size, size, colour, left_align=False)
+    pygame.display.flip()
