@@ -7,7 +7,7 @@
 // Last Modified by: Arkleseisure
 void confirm_it_works() {
 	printf("\n It's working!!!\n");
-	printf(" This is game mechanics version 308.\n");
+	printf(" This is game mechanics version 309.\n");
 }
 
 // structure defining the key elements for each piece
@@ -22,6 +22,22 @@ struct Piece {
 	bool captured;
 };
 
+/*
+Structure holding all the information about the current position in a game
+piece_list: list holding piece structs, holding the type and location of each piece, along with whether or not the piece has been captured yet.
+board: list of 12 bitboards, holding the board according to each piece (more explanations in the initialize_game function in play_game)
+hash: hash of the position, used for testing for draw by repetition, and also could be used for opening databases, etc in future
+past_hash_list: list of the hashes of past positions, back to the last time an irreversible move was made, as the previous positions cannot possibly cause a draw by repetition
+last_move: last move to be played, used to detect potential en-passant.
+to_play: player to move, 0 (white) or 1 (black)
+ply_counter: number of ply (one move for one player) since the last irreversible move, used to detect draw by 50 move rule.
+castling: although int is 4 bytes, only 4 bits are used, to hold the castling legality of the position (based only on whether the rooks or king have moved... 
+		 checks and so forth still need to be verified). The bits hold the legality of castling kingside/queenside for black (8/4 in terms of int value of the bits), 
+		 then kingside/queenside for white.
+
+Last Modified: 16/9/2021
+Last Modified by: Arkleseisure
+*/
 struct Game {
 	struct Piece piece_list[32];
 	unsigned long long board[12];
@@ -151,6 +167,11 @@ void get_move_string(unsigned long long* move, char* output_move) {
 	output_move[3] = rank(move[1]) + '1';
 }
 
+/*
+Prints out a move in terms of the squares of the move, so that it is human readable.
+Last Modified: 11/9/2021
+Last Modified by: Arkleseisure
+*/
 void print_move(unsigned long long* move) {
 	char move_string[4];
 	char promotions[4] = { 'N', 'B', 'R', 'Q' };
@@ -167,7 +188,7 @@ void print_move(unsigned long long* move) {
 /*
 Checks whether the square held by loc is attacked by the player who isn't to play
 
-Last Modified: 05/9/2021
+Last Modified: 5/9/2021
 Last Modified by: Arkleseisure
 */
 bool is_attacked(unsigned long long* board, int player_attacked, unsigned long long loc) {
@@ -585,16 +606,8 @@ int get_king_moves(unsigned long long same_pieces, unsigned long long other_piec
 
 /*
 Function to apply a move to the position
-board: board position, holding 12 bitboards, one for each piece type
+game: Game struct holding all the information about the position.
 move: move to be applied to the postion, held in 2 bitboards, one with the start of the move and one with the end, and a flag giving details about the move
-extras: [castling, to_play, ply_counter], where castling is a 4 bit int with each bit representing the legality of castling for white or black, kingside or queenside,
-			,to_play = 0 (white to play) or 1 (black to play) and ply_counter is the number of ply (half-moves) since the last irreversible move (pawn move/capture/castling),
-			and is used for the 50 move rule and to help with the efficiency of draw by repetition
-hash: zobrist hash of the position (more explanations found in the c_interface file where most of this stuff is done). Passed as an array as this allows it to be returned automatically.
-last_move: last move to be played. This is not used in the function, but it does get changed and having it as an input means that its value gets
-			returned automatically
-piece_list: list of 32 piece structs (1 for each piece), holding the piece type, location and whether or not that piece has been captured.
-past_hash_list: list of all the hashes of past positions back to the last time that there was an irreversible move, such as a capture or pawn move. 
 zobrist_numbers: random numbers used to define the hashes, see https://www.chessprogramming.org/Zobrist_Hashing
 removed_hash: used to return the hash which was removed from the past_hash_list, so that it can be undone later.
 
@@ -800,20 +813,12 @@ int apply(struct Game* game, unsigned long long* move, unsigned long long* zobri
 }
 
 /*
-board: board position, holding 12 bitboards, one for each piece type
+game: Game struct, holding the information about the position
 move: move to be unapplied to the postion, held in 2 bitboards, one with the start of the move and one with the end, and a flag giving details about the move
-extras: [castling, to_play, ply_counter], where castling is a 4 bit int with each bit representing the legality of castling for white or black, kingside or queenside,
-			,to_play = 0 (white to play) or 1 (black to play) and ply_counter is the number of ply (half-moves) since the last irreversible move (pawn move/capture/castling),
-			and is used for the 50 move rule and to help with the efficiency of draw by repetition
-hash: zobrist hash of the position... This is passed in so that it can be changed and returned automatically (more explanations about zobrist stuff found in the c_interface file where most of the zobrist things are done).
 removed_hash: hash which was replaced at the start of the past_hash_list if the previous move wasn't reversible. This has to be put back to return the past_hash_list to its original state. 
-piece_list: list of 32 piece structs (1 for each piece), holding the piece type, location and whether or not that piece has been captured.
-captured: number of the piece which was captured (0 for white pawn, 1 for white knight, 2 for white bishop, ... documented in play_game)
+capture_index: index of the piece which was captured in the past_hash_list, so that it can be replaced.
 previous_castling: value of the castling variable before the move was applied.
 previous_ply_counter: value of the ply_counter before the move was applied.
-past_hash_list: list of all the hashes of past positions back to the last time that there was an irreversible move, such as a capture or pawn move.
-zobrist_numbers: random numbers used to define the hashes, see https://www.chessprogramming.org/Zobrist_Hashing
-last_move: last_move to be played, same format as move.
 previous_last_move: the last_move from before move was applied, meaning that the last move variable can be returned to its previous state.
 
 Last Modified: 9/9/2021
@@ -879,8 +884,10 @@ void unapply(struct Game* game, unsigned long long* move, unsigned long long rem
 
 /*
 Function which applies the critical changes to the position such that they can be undone quickly, making doing and undoing single moves more efficient
-board and move take the same form as they do in apply. Note: does not include pawn promotion
-Last Modified: 11/08/2021
+board and move take the same form as they do in apply. This should only be used to verify whether or not the resulting position is check, as any changes which
+are not useful for this purpose aren't applied.
+
+Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 */
 int quick_apply(unsigned long long* board, unsigned long long* move, int to_play, struct Piece* piece_list) {
@@ -918,27 +925,13 @@ int quick_apply(unsigned long long* board, unsigned long long* move, int to_play
 		}
 	}
 
-	// applies castling
-	// castling kingside
-	if (flag == 2) {
-		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
-		// the bits in the position that the rook currently is and will move to (as 1 refers to a1). This is then shifted for castling as black by 
-		// 7 ranks * 8 squares = 56 squares
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
-	}
-	// castling queenside
-	else if (flag == 3) {
-		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[3 + 6 * to_play] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-	}
-
 	// returns the type of piece which has been captured, allowing this capture to be undone if required
 	return captured;
 }
 
 /*
 Function which undoes the changes made by the quick_apply function.
-Last Modified: 10/08/2021
+Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 */
 void quick_undo(unsigned long long* board, unsigned long long* move, int to_play, int captured, struct Piece* piece_list) {
@@ -968,21 +961,6 @@ void quick_undo(unsigned long long* board, unsigned long long* move, int to_play
 	else if ((flag & 4) != 0) {
 		board[captured] ^= move[1];
 	}
-
-	// undoes castling
-	// castling kingside
-	if (flag == 2) {
-		// xors the board corresponding to the correct rook (the king will have already been moved) with the binary number 10100000, which will flip
-		// the bits in the position that the rook currently is and will move to (as 1 refers to a1). This is then shifted for castling as black by 
-		// 7 ranks * 8 squares = 56 squares
-		board[6 * to_play + 3] ^= ((unsigned long long)(0xA0)) << 56 * to_play;
-	}
-	// castling queenside
-	else if (flag == 3) {
-		// same as for kingside castling, but with the binary number 1001 representing the queenside castling transformation
-		board[6 * to_play + 3] ^= ((unsigned long long)(0x9)) << 56 * to_play;
-	}
-
 }
 
 /*
@@ -1074,7 +1052,6 @@ Looks for a draw by lack of material, by looking through the piece list and chec
 inputs: piece_list: List of structs of each piece, holding piece location, type and whether it has been captured.
 Last Modified: 17/8/2021
 Last Modified by: Arkleseisure
-UNTESTED
 */
 bool draw_by_lack_of_material(struct Piece* piece_list) {
 	int i;
@@ -1219,16 +1196,9 @@ int look_for_mates(unsigned long long* board, int to_play, unsigned long long* l
 /*
 Function which determines whether or not the game is in a terminal state... Returns 0 if a win for black, 1 if draw, 2 if win for white and 3 if the position is not terminal
 INPUTS:
-board: the usual 12 * bitboards described in play_game
-to_play: 0 (black played last and we are checking if white is mated) or 1 (white played last and we're checking if black is being mated)
-piece_list: array of 32 pieces, each one containing the piece type, their location and whether or not they have been captured yet.
-ply_counter: number of ply since the 50 move rule has been reset (1 ply = 1 move for 1 player)
-past_hash_list: array of the hashes of past positions, to check for repetition
-hash: zobrist hash of current position
-last_move: last move to be played, held as 2 bitboards and a flag, as explained in play_game
-Last Modified: 17/8/2021
+game: Game struct holding all the information needed about the game.
+Last Modified: 16/9/2021
 Last Modified by: Arkleseisure
-UNTESTED
 */
 int terminal(struct Game* game) {
 	int i;
