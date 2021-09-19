@@ -9,8 +9,11 @@ from Bits_and_pieces import convert_to_text, switch_fen_colours
 
 initial_pos_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-# Plays through a full game of chess.
-# Last Modified: 17/9/2021
+'''
+Plays through a full game of chess.
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def play_game(colour, other_player):
     # Initializes game
     background, buttons, game, zobrist_numbers = initialize_game()
@@ -43,35 +46,59 @@ def play_game(colour, other_player):
     draw_result(result)
     get_square(colour, buttons)
 
-
-# gets an input human move from clicks on the board
+'''
+Gets an input human move from clicks on the board
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def get_human_move(game, background, buttons, colour, legal_moves):
+    # After the engine has moved, the pygame window hasn't received anything for a while and says the program isn't responding. 
+    # This returns it to its original state.
     for event in pygame.event.get():
         pass
+
+    # draws the board to the screen.
     draw_board(colour, background, buttons, game.board, game.last_move, current_move=0)
+
+    # gets the square/button the human has clicked on
     move_from, button_clicked = get_square(colour, buttons)
+
+    # if the human has clicked on the exit button, this exits the program.
     if button_clicked == 'Exit':
         return [0, 0, 0], True 
+
+    # loops until the human has entered a valid move, at which point the program is quit.
     while True:
+        # draws the board
         draw_board(colour, background, buttons, game.board, game.last_move, current_move=move_from)
+
+        # gets the square/button the human has clicked on
         move_to, button_clicked = get_square(colour, buttons)
+
+        # if the button is the exit button, it quits the program
         if button_clicked == 'Exit':
             return [0, 0, 0], True 
 
+        # loops through the legal moves to see if the move entered is legal
         for move in legal_moves:
+            # checks if the move is legal
             if move[0] == move_from and move[1] == move_to:
+                # if the move is not a promotion, then the starting and end squares uniquely define the move
                 if move[2] & 8 == 0:
                     return move, False
-                # handles pawn promotion
+                # handles pawn promotion by drawing the potential promotion pieces
                 else:
                     promotion_pieces = ['N', 'B', 'R', 'Q']
                     # gives the square number of the square to draw the queen to
                     loc = math.log2(move[1])
+
+                    # finds the positions the pieces need to be drawn to
                     if game.to_play == 0:
                         locs = [loc - 24, loc - 16, loc - 8, loc]
                     else:
                         locs = [loc + 24, loc + 16, loc + 8, loc]
 
+                    # gets the colour of the pieces drawn
                     if game.to_play == 0:
                         piece_col = 'w'
                     else:
@@ -81,15 +108,25 @@ def get_human_move(game, background, buttons, colour, legal_moves):
                     for i in range(4):
                         draw_piece(promotion_pieces[i] + piece_col, locs[i], colour)
 
+                    # updates the screen
                     pygame.display.flip()
+
+                    # gets the piece the user wants to promote to
                     promotion_piece, button_clicked = get_square(colour, buttons)
+
+                    # if the user tries to exit, then this exits
                     if button_clicked == 'Exit':
                         return [0, 0, 0], True
+                    
+                    # returns the move with the promotion chosen.
                     for i in range(4):
                         if math.log2(promotion_piece) == locs[i]:
                             return [move[0], move[1], move[2] - (move[2] & 3) + i], False
+                    
+                    # if the move is invalid, the second square clicked on will become the first square of the next move
                     move_to = promotion_piece
-
+        
+        # sets the first part of the move to the second part of the last move as the move is invalid.
         move_from = move_to
 
 # initializes items required for playing the game.
@@ -485,6 +522,12 @@ def test_draws():
     return draws_work
 
 
+'''
+Tests the speed of the apply/unapply and legal_moves functions, using perft (see c_interface for more info)
+Tests the perft function at different depths as it often works at different speeds at different depths due to differing ratios of things it has to do.
+Last Modified: 16/9/2021
+Last Modified by: Arkleseisure
+'''
 def speed_test():
     print('Speed test started')
     start_depth = 3
@@ -511,57 +554,11 @@ def speed_test():
         
 
 
-# function used until all the functions in play_game are coded, allows us to test what we've done so far
+'''
+Function used to quickly test out a new feature... stuff in here can largely be disregarded
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def do_test_stuff(colour, ai):
-    background, buttons, game, zobrist_numbers = initialize_game()
-    player = 0
+    speed_test()
 
-    quit = False
-    square_selected = False
-    while not quit:
-        draw_board(colour, background, buttons, game.board, game.last_move, current_move=0)
-        
-        poss_moves = legal_moves(game)
-        '''
-        print_board(game.board)
-
-        print('printing legal moves')
-        # prints the legal moves as [starting square][finishing square] [flag] [piece type] [piece index]
-        for move in poss_moves:
-            print(convert_to_text(move[0]) + convert_to_text(move[1]) + ' ' + str(move[2] % 16) + ' ' + str((move[2] % 256) // 16) + ' ' + str(move[2] // 256))
-        print('\nlegal moves printed\n\n')
-        '''
-
-        if not square_selected and game.to_play == player:
-            move_from, button_clicked = get_square(colour, buttons)
-
-        if button_clicked == 'Exit':
-            quit = True
-        else:
-            draw_board(colour, background, buttons, game.board, game.last_move, move_from)
-            if game.to_play == player:
-                move_to, button_clicked = get_square(colour, buttons)
-                # checks if the move is legal
-                move = [0,0,0]
-                for i in range(len(poss_moves)):
-                    if poss_moves[i][0] == move_from and poss_moves[i][1] == move_to:
-                        move = poss_moves[i]
-            else:
-                move, value = get_engine_move(game, zobrist_numbers, 10)
-
-
-
-            # exits if the exit button is clicked, otherwise applies the move
-            # to the board
-            if button_clicked == 'Exit':
-                quit = True
-            elif move != [0, 0, 0]:
-                print('Move applied')
-                game = apply(game, move, zobrist_numbers)
-                square_selected = False
-            else:
-                move_from = move_to
-                square_selected = True
-
-            if terminal(game) != 3:
-                quit = True
