@@ -14,7 +14,11 @@ engine = CDLL(engine_lib_path)
 game_mech.confirm_it_works()
 engine.check_it_works()
 
-
+'''
+The equivalent to the piece class in the game_mechanics file, but in python
+Last Modified: 19/9/21
+Last Modified by: Arkleseisure
+'''
 class Piece(Structure):
 	_fields_ = [('loc', c_ulonglong), ('type', c_int), ('captured', c_bool)]
 
@@ -30,6 +34,11 @@ class Piece(Structure):
 		return ('captured ' if self.captured else '') + colour + types[self.type % 6] + ' on ' + location
 
 
+'''
+The equivalent to the Game structure in the game_mechanics file, but in python
+Last Modified: 19/9/21
+Last Modified by: Arkleseisure
+'''
 class Game(Structure):
 	_fields_ = [('piece_list', (Piece * 32)), ('board', (c_ulonglong * 12)), ('hash', c_ulonglong), ('past_hash_list', (c_ulonglong * 100)), ('last_move', (c_ulonglong * 3)), 
 			 ('to_play', c_int), ('ply_counter', c_int), ('castling', c_int)]
@@ -39,16 +48,15 @@ class Game(Structure):
 '''
 Interface for the apply function
 INPUTS:
-board = board position as a list of 12 bitboards, one for each piece, each represented by an integer
+game: Game struct, holding all variables relating to that point in the game.
 move = 2 bitboards, one for the square being left and one for the square being landed on, 
 	also a 7 bit flag containing extra info about the position
-castling = 4 bit int representing current castling legality (based on the movement of the king and rooks... other factors still have to be checked)
-to_play = 0 (white to play) or 1 (black to play)
-piece_list = length 32 array containing structs with all the pieces and their locations for quicker move generation
+zobrist_numbers: list holding all the zobrist numbers used to calculate the zobrist hash for the next position. 
+
 OUTPUTS:
-Same as inputs, but with updated values. Also, move is now replaced by last_move, as this needs to be changed when a move is applied.
-but the move applied is already known to the program calling this function.
-Last Modified: 04/07/2021
+new game struct with updated values.
+
+Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
 def apply(game, move, zobrist_numbers):
@@ -66,13 +74,11 @@ def apply(game, move, zobrist_numbers):
 '''
 Interface for the legal_moves function
 INPUTS:
-board = board position as a list of 12 bitboards, one for each piece, each represented by an integer
-castling = 4 bit int representing current castling legality (based on the movement of the king and rooks... other factors still have to be checked)
-to_play = 0 (white to play) or 1 (black to play)
-last_move = last move to be played as 2 bitboards and a flag
-piece_list = length 32 array containing structs with all the pieces and their locations for quicker move generation
+game: Game struct, holding all variables relating to that point in the game.
+
 OUTPUTS:
 legal_moves list containing all the legal moves in the position as c arrays of 2 bitboards and a flag (documented in play_game)
+
 Last Modified: 16/9/2021
 Last Modified by: Arkleseisure
 '''
@@ -85,7 +91,20 @@ def legal_moves(game):
 	num_moves = game_mech.legal_moves(c_game, c_legal_moves)
 	return c_legal_moves[:num_moves]
 
+'''
+Gets the move from the ai, given the position
+INPUTS:
+game: Game struct, holding all variables relating to that point in the game.
+zobrist_numbers: list holding all the zobrist numbers used to calculate the zobrist hash for the next position. 
+time_allowed: float holding the amount of time the engine has to choose its move.
 
+OUTPUTS:
+move: move it thinks is the best in the position
+current_value: evaluation of the current position
+
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def get_engine_move(game, zobrist_numbers, time_allowed):
 	c_game = (Game * 1)(*[game])
 	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
@@ -95,6 +114,9 @@ def get_engine_move(game, zobrist_numbers, time_allowed):
 	current_value = 0
 	move = [0, 0, 0]
 	moves = legal_moves(game)
+
+	if len(moves) == 1:
+		return moves[0], 0
 
 	start_time = time.time()
 	value = engine.get_engine_move(c_game, c_zobrist_numbers, move_number, c_time_allowed)
@@ -159,6 +181,16 @@ def generate_zobrist_stuff(game):
 
 	return zobrist_numbers
 
+'''
+Gets the board array from an input fen (just the part holding the board, the rest of the string must be discarded first)
+
+INPUTS: 
+game: Game struct holding information about the game. As this is mutable, it is changed but doesn't need to be returned.
+board_fen: board part of a fen string (aka, fen string excluding castling rights, en passant square, ...)
+
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def get_board(game, board_fen):
 	white_pawns = get_bitboard_from_fen(board_fen, 'P')
 	white_knights = get_bitboard_from_fen(board_fen, 'N')
@@ -178,7 +210,14 @@ def get_board(game, board_fen):
                 black_pawns, black_knights, black_bishops, black_rooks, black_queens, black_king])
 
 
-# initiates the piece list, an array containing a struct for each piece
+'''
+Initiates the piece list, an array containing a struct for each piece
+INPUTS: 
+game: struct containing all the information about a game
+
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def initiate_piece_list(game):
 	piece_types = {0: 'white pawn', 1: 'white knight', 2: 'white bishop', 3: 'white rook', 4: 'white queen', 5: 'white king', 
 				6: 'black pawn', 7: 'black knight', 8: 'black bishop', 9: 'black rook', 10: 'black queen', 11: 'black king'}
@@ -217,6 +256,16 @@ def initiate_piece_list(game):
 		print(piece_num)
 		print_board(game.board)
 
+'''
+Gets the last_move variable (used for detecting legality of en-passant) when the game is initialized.
+This is only done when the fen string specifies that the last move was a double pawn move.
+INPUTS:
+game: Game struct holding all the information about the game
+en_passant_target: string holding the square which a pawn could potentially land on after an en-passant capture next turn.
+
+Last Modified: 17/9/2021
+Last Modified by : Arkleseisure
+'''
 def get_last_move(game, en_passant_target):
     last_from = 0
     last_to = 0
@@ -238,7 +287,28 @@ def get_last_move(game, en_passant_target):
 
     game.last_move = (c_ulonglong * 3)(*[last_from, last_to, last_flag])
 
+'''
+The perft function (PERFormace Test) is used for testing the efficiency of the game mechanics and for debugging in the case of faulty rules.
+It works by calculating all the moves down to a certain depth and counting the number of nodes at that depth which are captures/castles/promotions/..., allowing us to compare
+our results to generally accepted values.
+It has two modes in which it can be run: 'all', which counts the number of nodes in each of the categories in the answer_type list, and
+										 'nodes', which just counts the number of nodes, and is used for efficiency testing.
 
+More info: https://www.chessprogramming.org/Perft
+
+INPUTS:
+game: Game struct, holding all the information about the position from which the perft function must be run
+zobrist_numbers: list holding the zobrist numbers, used for updating the hashes for each position.
+depth: int holding the depth to which the perft function should calculate
+type: mode in which the perft function will be run, 'all' or 'nodes'
+
+OUTPUTS:
+answer_dict: dictionary with the types of answer as keys (as held in answer_type) and the values calculated as values.
+time_taken: time taken to find these values.
+
+Last Modified: 15/9/2021
+Last Modified by: Arkleseisure
+'''
 def perft(game, zobrist_numbers, depth, type='all'):
 	c_depth = c_int(depth)
 	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
@@ -266,6 +336,12 @@ def perft(game, zobrist_numbers, depth, type='all'):
 	return answer_dict, time_taken
 
 
+'''
+Given a position in a game, returns whether or not the game is over.
+Returns 0 if a win for black, 1 if a draw, 2 if a win for white and 3 if the game isn't over.
+Last Modified: 17/9/2021
+Last Modified by: Arkleseisure
+'''
 def terminal(game):
 	c_game = (Game * 1)(*[game])
 	return int(game_mech.terminal(c_game))
