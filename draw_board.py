@@ -200,6 +200,9 @@ Last Modified: 03/07/2021
 Last Modified by: Arkleseisure
 '''
 def draw_board(colour, background, buttons, board, last_move, current_move):
+    # if the pygame window thinks the program isn't responding, the board cannot be drawn... This lets the pygame window know that the program is indeed still running
+    for event in pygame.event.get():
+        pass
     background.draw(screen)
     draw_highlights(last_move, current_move, colour)
     draw_pieces(board, colour)
@@ -352,7 +355,7 @@ def print_board(board):
 
 
 # prints text to the screen
-def print_screen(surface, text, x, y, size, colour, left_align=True, font_type="Calibri"):
+def print_screen(text, x, y, size, colour, surface=screen, left_align=True, font_type="Calibri"):
     # turns the text into a pygame surface
     font = pygame.freetype.SysFont(font_type, size, True)
     print_image, rect = font.render(text, colour)
@@ -374,11 +377,20 @@ def draw_result(result):
     x = board_x + 4 * square_size
     y = board_y + 3 * square_size
     size = 2 * square_size
-    print_screen(screen, 'Game Over', x, y, size, colour, left_align=False)
+    print_screen('Game Over', x, y, size, colour, left_align=False)
     if result == 1:
-        print_screen(screen, 'Draw', x, y + size, size, colour, left_align=False)
+        print_screen('Draw', x, y + size, size, colour, left_align=False)
     elif result == 0:
-        print_screen(screen, 'Black wins', x, y + size, size, colour, left_align=False)
+        print_screen('Black wins', x, y + size, size, colour, left_align=False)
     elif result == 2:
-        print_screen(screen, 'White wins', x, y + size, size, colour, left_align=False)
+        print_screen('White wins', x, y + size, size, colour, left_align=False)
+    pygame.display.flip()
+
+'''
+Prints the evaluation according to an engine to the screen
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def print_engine_eval(engine_col, value, depth):
+    print_screen('Eval: ' + str(value) + ' Depth: ' + str(depth), board_x + 9.5 * square_size, board_y + (1 - engine_col) * square_size * 7, size=square_size, colour=white, left_align=True)
     pygame.display.flip()
