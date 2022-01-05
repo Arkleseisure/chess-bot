@@ -30,7 +30,7 @@ def play_game(colour, other_player):
         if other_player == 'human' or (other_player == 'ai' and game.to_play == colour):
             move, exit = get_human_move(game, background, buttons, colour, moves)
         else:
-            move, value = get_engine_move(game, zobrist_numbers, 10)
+            value, depth, nodes, move = get_engine_move(game, zobrist_numbers, 0.5)
 
         if exit:
             return
@@ -52,11 +52,6 @@ Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
 def get_human_move(game, background, buttons, colour, legal_moves):
-    # After the engine has moved, the pygame window hasn't received anything for a while and says the program isn't responding. 
-    # This returns it to its original state.
-    for event in pygame.event.get():
-        pass
-
     # draws the board to the screen.
     draw_board(colour, background, buttons, game.board, game.last_move, current_move=0)
 
@@ -242,6 +237,9 @@ def initialize_game(fen=initial_pos_fen):
 
     # half move counter, used to find draws by 50 move rule
     game.ply_counter = int(fen_list[4])
+
+    # value of the position, as evaluated by the engine.
+    game.value = 0
 
     return background, buttons, game, zobrist_numbers
 
@@ -552,6 +550,348 @@ def speed_test():
             print('Trials:', trials)
     print('Finished')
         
+'''
+Plays a game between 2 engines to test their strength
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def play_test_game(engine_1, engine_2):
+    print('Playing game: White:', engine_1['name'], 'with', engine_1['time'], 'seconds Black:', engine_2['name'], 'with', engine_2['time'], 'seconds')
+    background, buttons, game, zobrist_numbers = initialize_game()
+    game_over = False
+    white_value = 0
+    black_value = 0
+    white_depth = 0
+    black_depth = 0
+    zeros_count = 0
+
+    while not game_over:
+		# Draws the board
+        draw_board(0, background, buttons, game.board, game.last_move, current_move=0)
+
+        # prints the value evaluated by each engine to the screen:
+        print_engine_eval(0, round(white_value, 2), white_depth)
+        print_engine_eval(1, round(black_value, 2), black_depth)
+
+        start_time = time.time()
+        if game.to_play == 0:
+            white_value, white_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_1['time'], engine_1['code'])
+            time_taken = time.time() - start_time
+            if nodes != 0 and time_taken != 0:
+                engine_1['speeds'].append(nodes/time_taken)
+            if white_value == 0:
+                zeros_count += 1
+            else:
+                zeros_count = 0
+        else:
+            black_value, black_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_2['time'], engine_2['code'])
+            time_taken = time.time() - start_time
+            if nodes != 0 and time_taken != 0:
+                engine_2['speeds'].append(nodes/time_taken)
+            if black_value == 0:
+                zeros_count += 1
+            else:
+                zeros_count = 0
+
+        # Applies the move
+        game = apply(game, move, zobrist_numbers)
+
+        if (move == game.last_move):
+            print_board(board)
+            game.to_play = 1 - game.to_play
+
+        # Checks if the game has ended
+        result = terminal(game)
+        game_over = (result != 3)
+
+        # declares a draw if the engines have thought it a draw for 3 moves each
+        if zeros_count == 6:
+            game_over = True
+            result = 1
+
+        # resigns if the eval is worse than 10 points in favor of the other player.
+        if game.to_play == 1 and white_value < -10:
+            game_over = True
+            result = 0
+        elif game.to_play == 0 and black_value > 10:
+            game_over = True
+            result = 2
+
+    if result == 0:
+        print('Black won')
+    elif result == 1:
+        print('Draw')
+    else:
+        print('White won')
+    return result/2
+
+
+'''
+Given a list of engines, runs a single round robin tournament where each engine plays each other one twice, once as white, once as black
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def run_round_robin(engines):
+    for i in range(len(engines)):
+        for j in range(i + 1, len(engines)):
+            # play_test_game returns 0 for a win for black, 0.5 for a draw, 1 for a win for white
+            result = play_test_game(engines[i], engines[j])
+            engines[i]['scores'][j - 1] += result
+            engines[j]['scores'][i] += 1 - result
+            for event in pygame.event.get():
+                pass
+            
+            if result == 0.5:
+                engines[i]['draws'][j - 1] += 1
+                engines[j]['draws'][i] += 1
+
+            result = play_test_game(engines[j], engines[i])
+            engines[j]['scores'][i] += result
+            engines[i]['scores'][j - 1] += 1 - result
+
+            engines[i]['matches played'][j - 1] += 2
+            engines[j]['matches played'][i] += 2
+            for event in pygame.event.get():
+                pass
+
+            if result == 0.5:
+                engines[i]['draws'][j - 1] += 1
+                engines[j]['draws'][i] += 1
+
+'''
+Given a list of engines in a round robin tournament, prints their scores out
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def print_current_scores(engines):
+    sorted_engine_list = sorted(engines, key=lambda engine: -sum(engine['scores']))
+
+    f = open('Test results', 'w')
+    for engine in sorted_engine_list:
+        print('Engine', engine['name'], 'with', engine['time'], 'seconds: Score:', str(sum(engine['scores'])) + '/' + str(sum(engine['matches played'])),
+                'Estimated elo:', round(engine['calculated elo'], 1), '+-', round(engine['total elo error'], 1), end=' ')
+        try: 
+            speed_error = round(np.std(engine['speeds'], ddof=1)/np.sqrt(len(engine['speeds'])))
+            print('Speed:', round(np.average(engine['speeds'])), '+-', speed_error, end=' ')
+
+            # saves the results to a text file in case something happens
+            f.write('Engine ' + engine['name'] + ' with ' + str(engine['time']) + ' seconds:')
+            f.write(' Score: ' + str(sum(engine['scores'])) + '/' + str(sum(engine['matches played'])))
+            f.write(' Estimated elo: ' + str(round(engine['calculated elo'])) + ' +- ' + str(round(engine['total elo error'])))
+            f.write(' Speed: ' + str(round(np.average(engine['speeds']))) + ' +- ' + str(speed_error) + '\n')
+        except ValueError:
+            print('', end=' ')
+
+        if engine['elo known']:
+            print('Actual elo:', engine['elo'])
+        else:
+            print()
+    f.close()
+
+'''
+Calculates an estimated elo for each engine given its score and the average elo of its competition.
+expected score (E) = 1/(1 + 10**(elo_diff/400))
+10**(elo_diff/400) = 1/E - 1
+elo_diff = 400log10(1/E - 1)
+Here, E is the expected score for the player with the lower elo assuming elo_diff is positive. 
+This means the result must be flipped to get the actual elo of the player when using the formula.
+
+Last Modified: 21/12/2021
+Last Modified by: Arkleseisure
+'''
+def calculate_elo(engines, average_elo=0):
+    for i in range(len(engines)):
+        # As the sum of the elos (ei) divided by the number of elos (N) is the average (a): sum(ei)/N = a
+        # we can rearrange this to see that ej = Na - sum(ei, i!=j)
+        # so: Nej = Na + (N-1)ej - sum(ei, i!=j)
+        # ej = a + ((N-1)ej - sum(ei, i!=j))/N
+        # this means that the jth elo is equal to the average elo plus the average of its difference with the other elos, which can
+        # be measured with the engine's performances against the opposition
+        elo_difference_sum = 0
+        for j in range(len(engines[i]['scores'])):
+            if engines[i]['scores'][j] == 0:
+                engines[i]['elo error'][j] = 800
+                elo_difference_sum -= 400
+            elif engines[i]['scores'][j] == engines[i]['matches played'][j]:
+                engines[i]['elo error'][j] = 800
+                elo_difference_sum += 400
+            else:
+                # remember the result is flipped, so there is a minus sign
+                elo_difference_sum -= 400 * math.log10(engines[i]['matches played'][j]/engines[i]['scores'][j] - 1)
+
+                # the standard error is calculated as the sample standard deviation of the results divided by sqrt N https://en.wikipedia.org/wiki/Standard_error
+                num_games = engines[i]['matches played'][j]
+                score = engines[i]['scores'][j]
+                num_wins = score - (engines[i]['draws'][j] * 0.5)
+                num_draws = engines[i]['draws'][j]
+                num_losses = num_games - num_wins - num_draws
+            
+                # calculates the error of the result (i.e the error in the fractional score score/games)
+                try:
+                    mean_score = score/num_games
+                except ZeroDivisionError:
+                    mean_score = 0
+                try:
+                    variance = (num_wins * ((1 - mean_score) ** 2) + num_draws * ((mean_score - 0.5) ** 2) + num_losses * (mean_score ** 2))/(num_games - 1)
+                except ZeroDivisionError:
+                    variance = 640000
+                std = math.sqrt(variance)
+                try:
+                    error_in_result = std/math.sqrt(num_games)
+                except ZeroDivisionError:
+                    error_in_result = 800
+
+                # adds the error due to the fact that the score can only be expressed to the nearest 0.5
+                error_in_score = error_in_result * num_games + 0.5
+                try:
+                    error_in_result = error_in_score/num_games
+                except ZeroDivisionError:
+                    error_in_result = 1
+
+                # calculates the error in the positive and negative elo directions
+                if error_in_result >= mean_score or mean_score == 1 or mean_score == 0:
+                    elo_error_minus = 800
+                else:
+                    elo_error_minus = -400 * math.log10(1/mean_score - 1) + 400 * math.log10(1/(mean_score - error_in_result) - 1)
+                if error_in_result + mean_score >= 1 or mean_score == 1 or mean_score == 0:
+                    elo_error_plus = 800
+                else:
+                    elo_error_plus = 400 * math.log10(1/mean_score - 1) - 400 * math.log10(1/(mean_score + error_in_result) - 1)
+
+                engines[i]['elo error'][j] = (elo_error_plus + elo_error_minus)/2
+
+        # calculates a single value for the error in the elo score by combining the errors in the individual values (sqrt of the sum of the squares as this is how to combine added errors, then scaled by N + 1 as the final calculated elo also does this and so the error also requires rescaling)
+        engines[i]['total elo error'] = math.sqrt(sum(engines[i]['elo error'][j] ** 2 for j in range(len(engines[i]['elo error']))))/(len(engines[i]['scores']) + 1)
+            
+        engines[i]['calculated elo'] = average_elo + elo_difference_sum/(len(engines[i]['scores']) + 1)
+
+    # calculates the shift between the calculated elos and the actual ones, to account for any systematic shift in elo
+    total_calculated_elo = 0
+    num_known_elos = 0
+    for i in range(len(engines)):
+        if engines[i]['elo known']:
+            total_calculated_elo += engines[i]['calculated elo']
+            num_known_elos += 1
+    
+    # fixes any systematic shift in the values of the elo ratings
+    if num_known_elos != 0:
+        average_calculated_known_elo = total_calculated_elo/num_known_elos
+        elo_shift = average_calculated_known_elo - average_elo
+
+        for i in range(len(engines)):
+            engines[i]['calculated elo'] -= elo_shift
+
+
+'''
+Function to test engines against each other to estimate their elo
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def test_engines(engine_names, times, elos):
+    engines = []
+    for i in range(len(engine_names)):
+        for j in range(len(times)):
+            engines.append({'name': engine_names[i], 'time': times[j], 'scores': [], 'draws': [], 'matches played': [], 'calculated elo': 0, 'elo error': [], 'total elo error': 0, 'nodes': 0, 'total time': 0, 'speeds': []})
+
+    for i in range(len(engines)):
+        if i < len(elos) and elos[i] != 0:
+            engines[i]['elo known'] = True
+            engines[i]['elo'] = elos[i]
+        else:
+            engines[i]['elo known'] = False
+            engines[i]['elo'] = 0
+
+        for j in range(len(engines) - 1):
+            engines[i]['scores'].append(0)
+            engines[i]['draws'].append(0)
+            engines[i]['matches played'].append(0)
+            engines[i]['elo error'].append(0)
+
+    total_elo = 0
+    num_elos = 0
+    for i in range(len(elos)):
+        if elos[i] != 0:
+            total_elo += elos[i]
+            num_elos += 1
+
+    if num_elos == 0:
+        average_elo = 0
+    else:
+        average_elo = total_elo/num_elos
+
+    # adds the code for each engine to the list of engines
+    for i in range(len(engines)):
+        engines[i]['code'] = get_engine_code(engine_names[i//len(times)])
+
+    # plays round robin tournaments until the program is stopped
+    while True:
+        calculate_elo(engines, average_elo)
+        print_current_scores(engines)
+        print('Current time:', time.ctime(time.time()))
+        run_round_robin(engines)
+
+
+'''
+Similar to test_engines, but the purpose of this one is to quickly evaluate the strength of one particular engine.
+Last Modified: 21/12/2021
+Last Modified by: Arkleseisure
+'''
+def test_engine(other_engines, test_engine, times, elos):
+    main_engines = []
+    for i in range(len(times)):
+        main_engines.append({'name': test_engine, 'time': times[i], 'scores': [], 'draws': [], 'matches played': [], 'calculated elo': 0, 'elo error': [], 'total elo error': 0, 'nodes': 0, 'total time': 0, 'speeds': [], 'elo known': False})
+
+    for i in range(len(other_engines)):
+        other_engines[i]['elo known'] = True
+        other_engines[i]['elo'] = elos[i]
+        other_engines[i]['speeds'] = []
+
+        for j in range(len(times)):
+            main_engines[j]['scores'].append(0)
+            main_engines[j]['draws'].append(0)
+            main_engines[j]['matches played'].append(0)
+            main_engines[j]['elo error'].append(0)
+
+    # adds the code for each engine
+    for i in range(len(other_engines)):
+        other_engines[i]['code'] = get_engine_code(other_engines[i]['name'])
+    for j in range(len(times)):
+        main_engines[j]['code'] = get_engine_code(test_engine)
+
+    # plays matches against each engine until the program is stopped.
+    while True:
+        for i in range(len(times)):
+            for j in range(len(other_engines)):
+                result = play_test_game(main_engines[i], other_engines[j])
+                main_engines[i]['scores'][j] += result
+                if result == 0.5:
+                    main_engines[i]['draws'][j] += 1
+                
+                result = play_test_game(other_engines[j], main_engines[i])
+                main_engines[i]['scores'][j] += 1 - result
+                if result == 0.5:
+                    main_engines[i]['draws'][j] += 1
+
+                main_engines[i]['matches played'][j] += 2
+
+        calculate_elo(main_engines, sum(elos)/len(elos))
+        print_current_scores(main_engines)
+        print('Current time:', time.ctime(time.time()))
+
+
+def test_engine_on_pos(engine_name):
+    fen_list = [initial_pos_fen, 
+            'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1', 
+            '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0', 
+            'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1', 
+            'r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1']
+    
+    fen_names = ['Initial position', 'Kiwipete', 'Rook endgame', 'White to play', 'Black to play']
+    time = 20
+    for i in range(len(fen_list)):
+        print('\nNext fen:', fen_names[i])
+        background, buttons, game, zobrist_numbers = initialize_game(fen_list[i])
+        value, depth, nodes, move = get_engine_move(game, zobrist_numbers, time, get_engine_code(engine_name))
 
 
 '''
@@ -560,5 +900,26 @@ Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
 def do_test_stuff(colour, ai):
+    '''
     speed_test()
+    '''
+    engine_names = ['v5', 'v6']
+    times = [0.1]
+    elos = []
+    test_engines(engine_names, times, elos)
 
+    '''
+    other_engines = [{'name': 'v3', 'time': 0.5},
+                     {'name': 'v3', 'time': 0.2},
+                     {'name': 'v2update', 'time': 0.5},
+                     {'name': 'v2update', 'time': 0.2}]
+
+
+    engine = 'v4'
+    times = [0.5]
+    elos = [1200]#, 1050, 1100, 1000]
+    test_engine(other_engines, engine, times, elos)
+
+    test_engine_on_pos('v3')
+    test_engine_on_pos('v4')
+    '''
