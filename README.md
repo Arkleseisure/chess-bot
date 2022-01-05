@@ -18,5 +18,5 @@ __anything.png__: Image used for the display. P, N, B, R, Q, K all refer to thei
 __engine.c__ - final version will have the most up-to-date code. This is where most of the efforts to improve the engine will be made.  
 __play_game.py__ - file where code should be changed when you want to change up a test... do_test_stuff at the bottom of the code is what will generally be called.  
 __main.py__ - run your code from here.  
-__game_mechanics_v1.c__ - If you want to improve the efficiency of how the engine finds its legal moves and applies/unapplies moves, this is the file for that. 
+__game_mechanics_v1.c__ - If you want to improve the efficiency of how the engine finds its legal moves and applies/unapplies moves, this is the file for that.  
 __c_interface.py__ - Occasionally you may want to change the Game or Piece struct (for instance, storing information to help with efficiency). When this happens, the python declaration in this file will also have to be changed.
