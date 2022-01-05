@@ -15,6 +15,9 @@ def convert_to_text(pos):
 	# returns the letter for the column and the number of the row as a string
 	return chr(col + 97) + str(row + 1)
 
+def print_move(move):
+    print(convert_to_text(move[0]) + convert_to_text(move[1]))
+
 
 # takes in the board part of the fen and returns the bitboard for a specific piece type
 def get_bitboard_from_fen(fen, piece):
