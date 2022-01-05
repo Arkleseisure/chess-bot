@@ -1,17 +1,18 @@
-from ctypes import CDLL, c_ulonglong, c_int, c_char, Structure, c_bool, c_double
+from ctypes import CDLL, c_ulonglong, c_int, c_char, Structure, c_bool, c_double, c_float
 import sys
 import random
 import time
-from Bits_and_pieces import get_bitboard_from_fen, convert_to_text
+import math
+from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, print_move
 from draw_board import print_board
 
 
 # imports the c libraries
-game_mechanics_lib_path = 'theories/game_mechanics_%s.so' % (sys.platform)
-game_mech = CDLL(game_mechanics_lib_path)
+game_mech_lib_path = 'theories/game_mechanics_v1_%s.so' % (sys.platform)
+game_mech = CDLL(game_mech_lib_path)
+game_mech.confirm_it_works()
 engine_lib_path = 'theories/engine_%s.so' % (sys.platform)
 engine = CDLL(engine_lib_path)
-game_mech.confirm_it_works()
 engine.check_it_works()
 
 '''
@@ -41,8 +42,7 @@ Last Modified by: Arkleseisure
 '''
 class Game(Structure):
 	_fields_ = [('piece_list', (Piece * 32)), ('board', (c_ulonglong * 12)), ('hash', c_ulonglong), ('past_hash_list', (c_ulonglong * 100)), ('last_move', (c_ulonglong * 3)), 
-			 ('to_play', c_int), ('ply_counter', c_int), ('castling', c_int)]
-
+			 ('to_play', c_int), ('ply_counter', c_int), ('castling', c_int), ('value', c_float), ('current_np_material', c_float)]
 
 
 '''
@@ -105,27 +105,25 @@ current_value: evaluation of the current position
 Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
-def get_engine_move(game, zobrist_numbers, time_allowed):
+def get_engine_move(game, zobrist_numbers, time_allowed, engine_code=engine, value_output='int'):
 	c_game = (Game * 1)(*[game])
 	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
 	depth = 1
-	move_number = (c_int * 1)(*[0])
+	move_number = (c_int * 1)()
 	c_time_allowed = c_double(time_allowed)
-	current_value = 0
 	move = [0, 0, 0]
 	moves = legal_moves(game)
+	c_value = (c_float * 1)(*[0])
+	c_depth = (c_int * 1)(*[1])
+	c_nodes = (c_ulonglong * 1)(*[0])
 
 	if len(moves) == 1:
-		return moves[0], 0
+		return 0, 0, 0, moves[0]
 
-	start_time = time.time()
-	value = engine.get_engine_move(c_game, c_zobrist_numbers, move_number, c_time_allowed)
-	if time.time() - start_time < time_allowed:
-		print('Not enough time was spent, there is a glitch.')
-		quit()
+	value = engine_code.get_engine_move(c_game, c_zobrist_numbers, move_number, c_time_allowed, c_value, c_depth, c_nodes)
 
-	move = moves[move_number[0]]
-	return move, current_value
+	move = moves[int(move_number[0])]
+	return float(c_value[0]), int(c_depth[0]) - 2, int(c_nodes[0]), move
 
 '''
 Generates pseudorandom numbers used for zobrist hashes (an efficient way to hash a board position), 
@@ -345,3 +343,13 @@ Last Modified by: Arkleseisure
 def terminal(game):
 	c_game = (Game * 1)(*[game])
 	return int(game_mech.terminal(c_game))
+
+'''
+Gets the code for a particular engine given the name of the engine
+Last Modified: 19/9/2021
+Last Modified by: Arkleseisure
+'''
+def get_engine_code(engine_name):
+	if engine_name != '':
+		return CDLL('theories/engine_%s.so' % (engine_name + '_' + sys.platform))
+	return CDLL('theories/engine_%s.so' % sys.platform)
