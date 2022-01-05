@@ -31,8 +31,8 @@ past_hash_list: list of the hashes of past positions, back to the last time an i
 last_move: last move to be played, used to detect potential en-passant.
 to_play: player to move, 0 (white) or 1 (black)
 ply_counter: number of ply (one move for one player) since the last irreversible move, used to detect draw by 50 move rule.
-castling: although int is 4 bytes, only 4 bits are used, to hold the castling legality of the position (based only on whether the rooks or king have moved... 
-		 checks and so forth still need to be verified). The bits hold the legality of castling kingside/queenside for black (8/4 in terms of int value of the bits), 
+castling: although int is 4 bytes, only 4 bits are used, to hold the castling legality of the position (based only on whether the rooks or king have moved...
+		 checks and so forth still need to be verified). The bits hold the legality of castling kingside/queenside for black (8/4 in terms of int value of the bits),
 		 then kingside/queenside for white.
 
 Last Modified: 16/9/2021
@@ -47,6 +47,8 @@ struct Game {
 	int to_play;
 	int ply_counter;
 	int castling;
+	float value;
+	float current_np_material;
 };
 
 // returns the rank given by a single bit on a bitboard (or if there is more than one bit, the rank of the bit with the highest rank)
@@ -281,14 +283,14 @@ loc: bitboard with the location of the pawn
 moves: array to put the moves found into
 index: index of the piece in the piece_list
 to_play: player to move (0: white, 1: black)
-last_move: last move to be played as 2 bitboards, 1 for the starting position, 1 for the finish, 
+last_move: last move to be played as 2 bitboards, 1 for the starting position, 1 for the finish,
 			and 1 flag containing extra information about the move (for more info see play_game)
 
 Last Modified: 10/8/2021
 Last Modified by: Arkleseisure
 */
-int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
-				unsigned long long index, int to_play, unsigned long long* last_move) {
+int get_pawn_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
+	unsigned long long index, int to_play, unsigned long long* last_move) {
 	int i;
 	int j;
 	int num_moves = 0;
@@ -367,7 +369,7 @@ to_play: player to move (0: white, 1: black)
 Last Modified: 11/8/2021
 Last Modified by: Arkleseisure
 */
-int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
+int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
 	unsigned long long index, int to_play) {
 	int i;
 	int num_moves = 0;
@@ -376,7 +378,7 @@ int get_knight_moves(unsigned long long same_pieces, unsigned long long other_pi
 	int directions[] = { -1, 1 };
 	int rank_changes[] = { 1, 1, 2, 2, 1, 1, 2, 2 };
 	int piece_rank = rank(loc);
-	
+
 	int piece_type = 1 + 6 * (unsigned long long)to_play;
 
 
@@ -413,7 +415,7 @@ to_play: player to move (0: white, 1: black)
 Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
-int get_bishop_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
+int get_bishop_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
 	unsigned long long index, int to_play) {
 	int i;
 	int j;
@@ -457,7 +459,7 @@ to_play: player to move (0: white, 1: black)
 Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
-int get_rook_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
+int get_rook_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
 	unsigned long long index, int to_play) {
 	int i;
 	int j;
@@ -501,7 +503,7 @@ to_play: player to move (0: white, 1: black)
 Last Modified: 12/8/2021
 Last Modified by: Arkleseisure
 */
-int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
+int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
 	unsigned long long index, int to_play) {
 	int i;
 	int j;
@@ -523,7 +525,7 @@ int get_queen_moves(unsigned long long same_pieces, unsigned long long other_pie
 			// third checks it hasn't moved horizontally off the side of the board (horizontal moves occur when the shift is 1, so i % 4 = 0)
 			// fourth checks it hasn't moved diagonally off the side of the board (diagonal moves take up the odd positions in the list)
 			if (new_position == 0 || (new_position & same_pieces) != 0 || ((i % 4 == 0) && rank(new_position) != piece_rank) ||
-					((i % 2 == 1) && abs(rank(new_position) - piece_rank) != j)) {
+				((i % 2 == 1) && abs(rank(new_position) - piece_rank) != j)) {
 				break;
 			}
 			// if the move is a capture, it adds that move and then breaks to the next loop
@@ -553,7 +555,7 @@ board: board position as 12 bitboards (see play_game)
 Last Modified: 13/8/2021
 Last Modified by: Arkleseisure
 */
-int get_king_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3], 
+int get_king_moves(unsigned long long same_pieces, unsigned long long other_pieces, unsigned long long loc, unsigned long long moves[28][3],
 	unsigned long long index, int to_play, int castling, unsigned long long* board) {
 	int i;
 	int num_moves = 0;
@@ -634,8 +636,8 @@ int apply(struct Game* game, unsigned long long* move, unsigned long long* zobri
 	// if there was the possibility of en passant this move, then that must be removed from the hash
 	// the first statement checks for a double pawn move last move, the second for a pawn of the opposite colour either side of the arrival square
 	int last_move_file = file(game->last_move[1]);
-	if ((game->last_move[2] & 15) == 1 && 
-		(((((game->last_move[1] >> 1) & game->board[6 * game->to_play]) != 0) && last_move_file != 0) || 
+	if ((game->last_move[2] & 15) == 1 &&
+		(((((game->last_move[1] >> 1) & game->board[6 * game->to_play]) != 0) && last_move_file != 0) ||
 			((((game->last_move[1] << 1) & game->board[6 * game->to_play]) != 0) && last_move_file != 7))) {
 		game->hash ^= zobrist_numbers[784 + last_move_file];
 	}
@@ -649,8 +651,8 @@ int apply(struct Game* game, unsigned long long* move, unsigned long long* zobri
 	game->hash ^= zobrist_numbers[64 * piece + 8 * second_square_rank + second_square_file];
 
 	// if the move is a double pawn move and there is a pawn on one of the sides then the possibility of en passant must be added to the hash
-	if (flag == 1 && 
-			(((((move[1] >> 1) & game->board[6 * (1 - game->to_play)]) != 0) && first_square_file != 0) ||
+	if (flag == 1 &&
+		(((((move[1] >> 1) & game->board[6 * (1 - game->to_play)]) != 0) && first_square_file != 0) ||
 			((((move[1] << 1) & game->board[6 * (1 - game->to_play)]) != 0) && first_square_file != 7))) {
 		// 784 = 12 * 64 + 16 is the initial index of the en passant files.
 		game->hash ^= zobrist_numbers[784 + first_square_file];
@@ -815,7 +817,7 @@ int apply(struct Game* game, unsigned long long* move, unsigned long long* zobri
 /*
 game: Game struct, holding the information about the position
 move: move to be unapplied to the postion, held in 2 bitboards, one with the start of the move and one with the end, and a flag giving details about the move
-removed_hash: hash which was replaced at the start of the past_hash_list if the previous move wasn't reversible. This has to be put back to return the past_hash_list to its original state. 
+removed_hash: hash which was replaced at the start of the past_hash_list if the previous move wasn't reversible. This has to be put back to return the past_hash_list to its original state.
 capture_index: index of the piece which was captured in the past_hash_list, so that it can be replaced.
 previous_castling: value of the castling variable before the move was applied.
 previous_ply_counter: value of the ply_counter before the move was applied.
@@ -824,7 +826,7 @@ previous_last_move: the last_move from before move was applied, meaning that the
 Last Modified: 9/9/2021
 Last Modified by: Arkleseisure
 */
-void unapply(struct Game* game, unsigned long long* move, unsigned long long removed_hash, int capture_index, int previous_castling, 
+void unapply(struct Game* game, unsigned long long* move, unsigned long long removed_hash, int capture_index, int previous_castling,
 	int previous_ply_counter, unsigned long long* previous_last_move) {
 	int i;
 	int index = (int)(move[2] >> 8);
@@ -857,7 +859,6 @@ void unapply(struct Game* game, unsigned long long* move, unsigned long long rem
 		game->piece_list[capture_index].captured = false;
 		game->board[game->piece_list[capture_index].type] ^= game->piece_list[capture_index].loc;
 	}
-
 	// handles pawn promotion
 	if ((flag & 8) != 0) {
 		int promotion_type = (flag & 3) + 1 + 6 * game->to_play;
@@ -874,7 +875,7 @@ void unapply(struct Game* game, unsigned long long* move, unsigned long long rem
 	for (i = 0; i < 3; i++) {
 		game->last_move[i] = previous_last_move[i];
 	}
-	
+
 	// undoes the changes to the castling, ply_counter, hash and past_hash_list variables.
 	game->castling = previous_castling;
 	game->past_hash_list[game->ply_counter] = removed_hash;
@@ -1064,17 +1065,17 @@ bool draw_by_lack_of_material(struct Piece* piece_list) {
 	for (i = 0; i < 32; i++) {
 		if (!piece_list[i].captured) {
 			switch (piece_list[i].type % 6) {
-			// a pawn is always enough material to win
+				// a pawn is always enough material to win
 			case 0:
 				return false;
-			// a knight will be enough to win if there is at least another piece on the board
+				// a knight will be enough to win if there is at least another piece on the board
 			case 1:
 				num_minor_pieces++;
 				if (num_minor_pieces >= 2) {
 					return false;
 				}
 				break;
-			// a bishop will be enough to win if there is at least another piece on the board which is not a bishop of the same colour
+				// a bishop will be enough to win if there is at least another piece on the board which is not a bishop of the same colour
 			case 2:
 				num_minor_pieces++;
 				bishop_rank = rank(piece_list[i].loc);
@@ -1092,10 +1093,10 @@ bool draw_by_lack_of_material(struct Piece* piece_list) {
 					return false;
 				}
 				break;
-			// a rook is always enough to win
+				// a rook is always enough to win
 			case 3:
 				return false;
-			// a queen is always enough to win
+				// a queen is always enough to win
 			case 4:
 				return false;
 			default:
@@ -1245,7 +1246,7 @@ int terminal(struct Game* game) {
 }
 
 /*
-Perft function: calculates the number of nodes, captures, en passant captures, castles, promotions, checks and checkmates at a certain depth. 
+Perft function: calculates the number of nodes, captures, en passant captures, castles, promotions, checks and checkmates at a certain depth.
 These values are then compared to generally accepted values in order to check the functioning of the game mechanics code.
 
 Last Modified: 9/9/2021
@@ -1310,7 +1311,7 @@ void perft_all(struct Game* game, unsigned long long* answers, unsigned long lon
 	}
 }
 
-/* 
+/*
 Same as perft_all, but doesn't return all the debugging statistics and is instead more streamlined and used for benchmarking
 
 Last Modified: 9/9/2021
