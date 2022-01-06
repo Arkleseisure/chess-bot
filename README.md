@@ -20,3 +20,134 @@ __play_game.py__ - file where code should be changed when you want to change up 
 __main.py__ - run your code from here.  
 __game_mechanics_v1.c__ - If you want to improve the efficiency of how the engine finds its legal moves and applies/unapplies moves, this is the file for that.  
 __c_interface.py__ - Occasionally you may want to change the Game or Piece struct (for instance, storing information to help with efficiency). When this happens, the python declaration in this file will also have to be changed.
+
+## Some key definitions
+### Bitboard
+Bitboards are 64 bit unsigned integers used to store a board state. Each bit stores whether or not a particular piece is on that square, so for instance a piece on a1 would be stored as the number 1, on b1 as 2, c1 4, and so on. a2 would be 2 ^ 8, a3 2^16 or in other words in binary it would be stored as all 0s except for the 17th from the right, which would be a 1. The board state and moves are the main things which are stored this way.
+
+### Piece types
+Each piece type has it's own associated index, from 0 to 11. The first 6 are the white pieces, the last 6 black. The order for both is P, N, B, R, Q, K.
+
+### Hash
+64 bit zobrist hash generated from the current position on the board. This is used to detect draw by repetition, but may also come in useful for indexing things in the future.
+
+### Move storage
+Moves are stored as 3 64 bit numbers in an array. The first is the bitboard of the location it has come from, the second the bitboard of the location it is going to and the 3rd is a flag containing other important information about the move, such as promotions and captures. Full documentation for this is in the initialize_game function of the play_game file.
+
+## Main data structures
+### Game
+This data structure essentially holds all the information you need about the current position in the game. Its variables are:
+
+**Piece list**:  
+Array holding all 32 pieces as Piece structs. The first 16 are the white pieces, ordered by value (i.e P, N, B, R, Q, K), and the last 16 the black pieces.  
+Each piece struct has 3 variables:  
+- captured: boolean holding whether or not the piece has been captured.  
+- loc: location of the piece as a bitboard  
+- type: type of piece as an int  
+
+**Board**:  
+Array holding the current board state as a series of bitboards for each piece, 0 being white pawns, 1 white knights, ... 11 black kings
+
+**Hash**:  
+Zobrist hash of the current position. Currently used to detect draw by repetition, but can potentially be used in the future to index transposition tables for instance. 
+
+**Past Hash list**:  
+List of all previous hashes back to the last irreversible move. This is used to detect draw by repetition. 
+
+**Last Move**:  
+Last move made. Used to see if en-passant is possible. 
+
+**To play**:  
+Player to move next. 0 if white, 1 if black.
+
+**Ply counter**:  
+Number of ply (one move for one player) since the last irreversible move, used for looking for the draw by 50 move rule. 
+
+**Castling**:  
+Although it is stored as an integer, only the last 4 bits are used, k/q side for black then k/q side for white.
+
+**Value**:  
+Current minimax value of the position. This is updated after each move as it is more efficient than recalculating every time the position is evaluated.
+
+**Current np material**:  
+Total amount of non-pawn material currently on the board. Used for interpolating between values used in the endgame and values used in the middlegame.
+
+### Zobrist Numbers
+List of numbers used to generate 64 bit hashes for each position on the chess board.
+
+### Engine
+Here are some of the data structures used by the engine:  
+**Values**:   
+Values of the pieces, by index. Black pieces are negative, as a black advantage is represented by a negative number.
+
+**Piece Square table mg**:  
+Values for each piece being positioned on each square in the middlegame. This, along with the endgame piece-square table is indexed by piece number (i.e 0 for pawn, 1 for knight, ...)
+
+**Piece Square table eg**:  
+Values for each piece being poisitioned on each square in the endgame. 
+
+**Max np material**:  
+Amount of non-pawn material at the start of the game. This is used to help with the interpolation between the middlegame and endgame.
+
+## Basic functioning
+Full documentation for all functions regarding inputs and outputs should be in their docstrings.
+
+### Game mechanics
+There are essentially 4 main useful functions which are called from game_mechanics (the other functions are generally called by these ones). These are:  
+
+**Apply**:  
+Applies an input move to the game struct.
+
+**Unapply**:  
+Undoes the changes made by the apply function.
+
+**Legal_moves**:  
+Returns the legal moves in a given position.
+
+**Terminal**:  
+Figures out if the game has ended. Returns 0 for a black win, 1 for a draw, 2 for a white win and 3 for an unfinished game.
+
+### Engine
+There are a few functions to be aware of that the engine uses:
+
+**Get engine move**:  
+This is the function called by the python. It runs a minimax at iteratively increasing depth until the allocated time is up. Then, it returns the result of the deepest search to date. 
+
+**Minimax**:  
+Performs a minimax search with alpha-beta pruning.
+
+**Evaluate**:  
+Returns an evaluation of the current position. At the time of writing, this evaluation includes material imbalance and piece-square tables.
+
+**Fully evaluate**:  
+Initialises various variables to the values for the current position. This means that they only have to be updated after each move, which is generally more efficient.
+
+**Update value**:  
+Updates the value according to the previous move.
+
+**Get psqt value**:  
+Returns the value of a particular piece on a particular square.
+
+### Testing
+These functions are all in the play_game.py file.
+
+**Test game mechanics**:  
+Verifies that the game mechanics work correctly. This would generally be used if you were trying to improve the efficiency of the game mechanics, and wished to verify that they still work as expected.
+
+**Speed test**:  
+Tests the speed of the game mechanics using a perft function. This would be used after you've verified the game mechanics function to check that they are indeed faster than the original version. 
+
+**Test engines**:  
+Performs round robin tournaments between a group of engines and outputs statistics such as estimated elos (note that for accurate elo estimations you will need to input the elo of at least one of the engines). 
+
+**Test engine**:  
+Tests one engine against a bunch of opponents of known strength to quickly determine strength. Note that it is generally better to make it play a head-to-head with the previous version using test_engines as this is a better indicator of head-to-head strength.
+
+**Test engine on pos**:  
+Tests an engine on a bunch of positions. This is to be used while printing stuff from the engine, in order to test its outputs vs a previous version, normally in debugging cases. 
+
+**Do test stuff**:  
+This is what is called directly from main, so muck around with the stuff in here to choose what you actually want to do with the test.
+
+
+Copyright: Honestly don't have a copyright cos who the hell would want to copy this thing? I mean, go use Stockfish's code for crying out loud.
