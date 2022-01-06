@@ -1,5 +1,8 @@
-# chess-bot
+# Gotham Chess bot
 Chess engine coded in c, with UI using the python pygame library
+
+Welcome to the Gotham Discord Chess bot project. 
+If you're looking to help out, here is most of the information you will need (it's all the information I could think of and be bothered to write down, but I'm sure to have forgotten something). Also, you may need to ask me to help out with setting things up at first... I had quite a few troubles, so hopefully I can spare you some of those.
 
 ## Files:  
 __Bits_and_pieces.py__: Used for various functions which may be useful in multiple places  
