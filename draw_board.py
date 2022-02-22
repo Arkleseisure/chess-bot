@@ -344,15 +344,6 @@ def draw_highlights(last_move, current_move, colour):
     # draws the highlights to the screen
     highlights.draw(screen)
 
-# function to print out the individual bitboards, mainly for debuggin purposes
-# Last Modified: 11/8/2021
-# Last Modified by: Arkleseisure
-def print_board(board):
-    for i in range(len(board)):
-        for j in range(8):
-            print(bin(board[i] + 2 ** 64)[8 * (j + 1) + 2: 8 * j + 2: -1])
-        print()
-
 
 # prints text to the screen
 def print_screen(text, x, y, size, colour, surface=screen, left_align=True, font_type="Calibri"):
