@@ -85,3 +85,82 @@ def switch_fen_colours(fen):
     new_fen += ' ' + fen_list[4] + ' ' + fen_list[5]
 
     return new_fen
+
+'''
+Takes in a square in the form 'a1', 'g4', ... and returns the relevant bitboard
+Last Modified: 20/2/2022
+Last Modified by: Arkleseisure
+'''
+def get_bitboard_from_square(squ):
+    x = ord(squ[0]) - 97
+    y = int(squ[1]) - 1
+
+    return 2**(x + 8 * y)
+
+'''
+Takes in a move in the form 'a1a2', 'h5f7', ... and returns the relevant bitboard move, as detailed in play_game
+Last Modified: 20/2/2022
+Last Modified by: Arkleseisure
+'''
+def convert_text_to_bitboard_move(move, game):
+    # first two bitboards detail the locations that the piece moves from and to.
+    new_move = [get_bitboard_from_square(move[:2]), get_bitboard_from_square(move[2:4])]
+    flag = 0
+    piece_captured = False
+    for i in range(len(game.piece_list)):
+        if (game.piece_list[i].loc & new_move[0]) != 0 and not game.piece_list[i].captured:
+            piece = game.piece_list[i]
+            # the flag has 15 important bits: first 7 are the index of the piece in the piece list
+            # then there are 4 detailing the type of piece
+            # the final 4 detail the type of move
+            flag += i << 8
+            flag += piece.type << 4
+
+            # detecting special moves to add to the flag
+            # castling
+            if (piece.type % 6) == 5:
+                # kingside
+                if new_move[1] == (new_move[0] << 2):
+                    flag += 2
+                # queenside
+                elif new_move[1] == (new_move[0] >> 2):
+                    flag += 3
+            # pawn stuff
+            elif (piece.type % 6) == 0:
+                # double pawn push
+                if abs(int(move[3]) - int(move[1])) == 2:
+                    flag += 1
+                # promotion
+                elif len(move) == 5:
+                    flag += 8
+                    if move[-1] == 'B':
+                        flag += 1
+                    elif move[-1] == 'R':
+                        flag += 2
+                    elif move[-1] == 'Q':
+                        flag += 3
+                # en passant
+                # first checks whether the previous move was a pawn move
+                elif (game.last_move[1] & (game.board[0] | game.board[6])) != 0:
+                    # then checks whether the move ends up immediately behind the previous pawn move, only possible in en-passant
+                    if (game.last_move[1] << 8 == new_move[1]) and game.to_play == 0:
+                        flag += 5
+                    elif (game.last_move[1] >> 8 == new_move[1]) and game.to_play == 1:
+                        flag += 5
+        elif (game.piece_list[i].loc & new_move[1]) != 0:
+            piece_captured = True
+
+    if piece_captured:
+        flag += 4
+    
+    new_move.append(flag)
+    return new_move
+
+# function to print out the individual bitboards, mainly for debuggin purposes
+# Last Modified: 11/8/2021
+# Last Modified by: Arkleseisure
+def print_board(board):
+    for i in range(len(board)):
+        for j in range(8):
+            print(bin(board[i] + 2 ** 64)[8 * (j + 1) + 2: 8 * j + 2: -1])
+        print()
