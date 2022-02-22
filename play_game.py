@@ -3,11 +3,14 @@ import random
 import time
 import numpy as np
 import math
+import wandb
 from draw_board import *
 from c_interface import *
-from Bits_and_pieces import convert_to_text, switch_fen_colours
+from Bits_and_pieces import convert_to_text, switch_fen_colours, get_bitboard_from_square, convert_text_to_bitboard_move, print_board
 
 initial_pos_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+
+# wandb.init('Gotham-Chess-bot')
 
 '''
 Plays through a full game of chess.
@@ -20,6 +23,9 @@ def play_game(colour, other_player):
     game_over = False
     exit = False
 
+    if other_player == 'ai':
+        book = get_opening_book()
+
     # Main game loop
     while not game_over:
         # Draws the board
@@ -30,7 +36,7 @@ def play_game(colour, other_player):
         if other_player == 'human' or (other_player == 'ai' and game.to_play == colour):
             move, exit = get_human_move(game, background, buttons, colour, moves)
         else:
-            value, depth, nodes, move = get_engine_move(game, zobrist_numbers, 0.5)
+            value, depth, nodes, move = get_engine_move(game, zobrist_numbers, 5, book)
 
         if exit:
             return
@@ -43,6 +49,8 @@ def play_game(colour, other_player):
         game_over = (result != 3)
 
     # draws the result then waits for the user to click to exit
+    # Draws the board
+    draw_board(colour, background, buttons, game.board, game.last_move, current_move=0)
     draw_result(result)
     get_square(colour, buttons)
 
@@ -124,10 +132,11 @@ def get_human_move(game, background, buttons, colour, legal_moves):
         # sets the first part of the move to the second part of the last move as the move is invalid.
         move_from = move_to
 
+
 # initializes items required for playing the game.
 # Last Modified: 15/9/2021
 # Last Modified by: Arkleseisure
-def initialize_game(fen=initial_pos_fen):
+def initialize_game(fen=initial_pos_fen, using_pygame=True):
     fen_list = fen.split()
 
     '''
@@ -183,7 +192,8 @@ def initialize_game(fen=initial_pos_fen):
 
     # initializes the pygame sprite group used to display the background (i.e
     # the board and anything around it)
-    background, buttons = initialize_pygame_stuff(game.to_play)
+    if using_pygame:
+        background, buttons = initialize_pygame_stuff(game.to_play)
     
     # legality of castling, represented by a four bit number,
     # kingside/queenside for black, then kingside/queenside for white
@@ -241,7 +251,9 @@ def initialize_game(fen=initial_pos_fen):
     # value of the position, as evaluated by the engine.
     game.value = 0
 
-    return background, buttons, game, zobrist_numbers
+    if using_pygame:
+        return background, buttons, game, zobrist_numbers
+    return game, zobrist_numbers
 
 '''
 Function used to test the speed and functionality of the rules. 
@@ -422,7 +434,7 @@ def test_draws():
     answer_list = [3, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 3, 3, 3, 1, 3, 3]
 
     for i in range(len(fen_list)):
-        background, buttons, game, zobrist_numbers = initialize_game(fen_list[i])
+        game, zobrist_numbers = initialize_game(fen_list[i], using_pygame=False)
         result = terminal(game)
         if result != answer_list[i]:
             print(fen_names[i], 'for white failed.')
@@ -430,7 +442,7 @@ def test_draws():
             draws_work = False
 
         # verifies that the code works equally well for both colours
-        background, buttons, game, zobrist_numbers = initialize_game(switch_fen_colours(fen_list[i]))
+        game, zobrist_numbers = initialize_game(switch_fen_colours(fen_list[i]), using_pygame=False)
         result = terminal(game)
         if result != answer_list[i]:
             print(fen_names[i], 'for black failed')
@@ -440,7 +452,7 @@ def test_draws():
 
     # tests draw by repetition by moving the knights to and from the starting position multiple times.
     fen = initial_pos_fen
-    background, buttons, game, zobrist_numbers = initialize_game(fen)
+    game, zobrist_numbers = initialize_game(fen, using_pygame=False)
     for i in range(2):
         moves = legal_moves(game)
         for move in moves:
@@ -483,7 +495,7 @@ def test_draws():
     captures = 0
     for i in range(5):
         fen = '2k5/8/8/8/8/8/8/5BNK w - - 0 1'
-        background, buttons, game, zobrist_numbers = initialize_game(fen)
+        game, zobrist_numbers = initialize_game(fen, using_pygame=False)
 
         move = [0, 0, 4]
         capture_happened = False
@@ -537,7 +549,7 @@ def speed_test():
         trials = 0
         print('Started depth', depth, 'at', time.ctime(time.time()))
         while time.time() - start_time < 600:
-            background, buttons, game, zobrist_numbers = initialize_game()
+            game, zobrist_numbers = initialize_game(using_pygame=False)
             answer_dict, time_taken = perft(game, zobrist_numbers, depth=depth, type='nodes')
             speeds[depth - start_depth].append(answer_dict['Nodes']/time_taken)
             trials += 1
@@ -555,9 +567,12 @@ Plays a game between 2 engines to test their strength
 Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 '''
-def play_test_game(engine_1, engine_2):
+def play_test_game(engine_1, engine_2, book, drawboard=True):
     print('Playing game: White:', engine_1['name'], 'with', engine_1['time'], 'seconds Black:', engine_2['name'], 'with', engine_2['time'], 'seconds')
-    background, buttons, game, zobrist_numbers = initialize_game()
+    if drawboard:
+        background, buttons, game, zobrist_numbers = initialize_game()
+    else:
+        game, zobrist_numbers = initialize_game(using_pygame=False)
     game_over = False
     white_value = 0
     black_value = 0
@@ -567,27 +582,36 @@ def play_test_game(engine_1, engine_2):
 
     while not game_over:
 		# Draws the board
-        draw_board(0, background, buttons, game.board, game.last_move, current_move=0)
+        if drawboard:
+            draw_board(0, background, buttons, game.board, game.last_move, current_move=0)
 
-        # prints the value evaluated by each engine to the screen:
-        print_engine_eval(0, round(white_value, 2), white_depth)
-        print_engine_eval(1, round(black_value, 2), black_depth)
+            # prints the value evaluated by each engine to the screen:
+            print_engine_eval(0, round(white_value, 2), white_depth)
+            print_engine_eval(1, round(black_value, 2), black_depth)
+        else:
+            # if the board is not being drawn, the pygame engine gets angry... This appeases it.
+            for event in pygame.event.get():
+                pass
 
         start_time = time.time()
         if game.to_play == 0:
-            white_value, white_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_1['time'], engine_1['code'])
+            white_value, white_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_1['time'], book, engine_1['code'])
             time_taken = time.time() - start_time
             if nodes != 0 and time_taken != 0:
                 engine_1['speeds'].append(nodes/time_taken)
+                if white_depth < 50:
+                    engine_1['depth'].append(white_depth)
             if white_value == 0:
                 zeros_count += 1
             else:
                 zeros_count = 0
         else:
-            black_value, black_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_2['time'], engine_2['code'])
+            black_value, black_depth, nodes, move = get_engine_move(game, zobrist_numbers, engine_2['time'], book, engine_2['code'])
             time_taken = time.time() - start_time
             if nodes != 0 and time_taken != 0:
                 engine_2['speeds'].append(nodes/time_taken)
+                if black_depth < 50:
+                    engine_2['depth'].append(black_depth)
             if black_value == 0:
                 zeros_count += 1
             else:
@@ -631,11 +655,11 @@ Given a list of engines, runs a single round robin tournament where each engine 
 Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 '''
-def run_round_robin(engines):
+def run_round_robin(engines, book, draw_board=True):
     for i in range(len(engines)):
         for j in range(i + 1, len(engines)):
             # play_test_game returns 0 for a win for black, 0.5 for a draw, 1 for a win for white
-            result = play_test_game(engines[i], engines[j])
+            result = play_test_game(engines[i], engines[j], book, drawboard=draw_board)
             engines[i]['scores'][j - 1] += result
             engines[j]['scores'][i] += 1 - result
             for event in pygame.event.get():
@@ -645,7 +669,7 @@ def run_round_robin(engines):
                 engines[i]['draws'][j - 1] += 1
                 engines[j]['draws'][i] += 1
 
-            result = play_test_game(engines[j], engines[i])
+            result = play_test_game(engines[j], engines[i], book, drawboard=draw_board)
             engines[j]['scores'][i] += result
             engines[i]['scores'][j - 1] += 1 - result
 
@@ -663,24 +687,46 @@ Given a list of engines in a round robin tournament, prints their scores out
 Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 '''
-def print_current_scores(engines):
-    sorted_engine_list = sorted(engines, key=lambda engine: -sum(engine['scores']))
+def print_current_scores(engines, test_file='Test results'):
+    # logs the values to weights and biases https://wandb.ai/home, useful tool for logging stuff online automatically without 
+    # having to make your own graphs.
+    graphs = {}
+    for engine in engines:
+        if engine['time'] in graphs:
+            graphs[engine['time']].append([(len(graphs[engine['time']]) + 1) * 10, engine['calculated elo']])
+        else:
+            graphs[engine['time']] = [[10, engine['calculated elo']]]
 
-    f = open('Test results', 'w')
+    try:
+        wandb.log({key: wandb.plot.line(wandb.Table(data=value, columns=['offset', 'elo']), 'offset', 'elo') for key, value in graphs})
+    except TypeError:
+        print('no data yet')
+
+    sorted_engine_list = sorted(engines, key=lambda engine: -engine['calculated elo'])
+
+    f = open(test_file, 'w')
     for engine in sorted_engine_list:
         print('Engine', engine['name'], 'with', engine['time'], 'seconds: Score:', str(sum(engine['scores'])) + '/' + str(sum(engine['matches played'])),
                 'Estimated elo:', round(engine['calculated elo'], 1), '+-', round(engine['total elo error'], 1), end=' ')
+
+        # saves the results to a text file in case something happens
+        f.write('Engine ' + engine['name'] + ' with ' + str(engine['time']) + ' seconds:')
+        f.write(' Score: ' + str(sum(engine['scores'])) + '/' + str(sum(engine['matches played'])))
+        f.write(' Estimated elo: ' + str(round(engine['calculated elo'], 1)) + ' +- ' + str(round(engine['total elo error'], 1)))
+
+        # records speed and depth results
         try: 
             speed_error = round(np.std(engine['speeds'], ddof=1)/np.sqrt(len(engine['speeds'])))
+            depth_error = round(np.std(engine['depth'], ddof=1)/np.sqrt(len(engine['depth'])), 2)
             print('Speed:', round(np.average(engine['speeds'])), '+-', speed_error, end=' ')
+            print('Depth:', round(np.average(engine['depth']), 2), '+-', depth_error, end=' ')
+            
+            f.write(' Speed: ' + str(round(np.average(engine['speeds']))) + ' +- ' + str(speed_error))
+            f.write(' Depth: ' + str(round(np.average(engine['depth']), 2)) + '+-' + str(depth_error) + '\n')
 
-            # saves the results to a text file in case something happens
-            f.write('Engine ' + engine['name'] + ' with ' + str(engine['time']) + ' seconds:')
-            f.write(' Score: ' + str(sum(engine['scores'])) + '/' + str(sum(engine['matches played'])))
-            f.write(' Estimated elo: ' + str(round(engine['calculated elo'])) + ' +- ' + str(round(engine['total elo error'])))
-            f.write(' Speed: ' + str(round(np.average(engine['speeds']))) + ' +- ' + str(speed_error) + '\n')
         except ValueError:
-            print('', end=' ')
+            print('oops', end=' ')
+
 
         if engine['elo known']:
             print('Actual elo:', engine['elo'])
@@ -787,14 +833,14 @@ Function to test engines against each other to estimate their elo
 Last Modified: 19/9/2021
 Last Modified by: Arkleseisure
 '''
-def test_engines(engine_names, times, elos):
+def test_engines(engine_names, times, elos, draw_board=True, num_games=0):
     engines = []
     for i in range(len(engine_names)):
         for j in range(len(times)):
-            engines.append({'name': engine_names[i], 'time': times[j], 'scores': [], 'draws': [], 'matches played': [], 'calculated elo': 0, 'elo error': [], 'total elo error': 0, 'nodes': 0, 'total time': 0, 'speeds': []})
+            engines.append({'name': engine_names[i], 'time': times[j], 'scores': [], 'draws': [], 'matches played': [], 'calculated elo': 0, 'elo error': [], 'total elo error': 0, 'nodes': 0, 'total time': 0, 'speeds': [], 'depth': []})
 
     for i in range(len(engines)):
-        if i < len(elos) and elos[i] != 0:
+        if i < len(elos):
             engines[i]['elo known'] = True
             engines[i]['elo'] = elos[i]
         else:
@@ -823,12 +869,27 @@ def test_engines(engine_names, times, elos):
     for i in range(len(engines)):
         engines[i]['code'] = get_engine_code(engine_names[i//len(times)])
 
-    # plays round robin tournaments until the program is stopped
-    while True:
+    book = get_opening_book()
+
+    # plays round robin tournaments until the program is stopped or the set number of games is reached
+    while (num_games == 0) or (sum(engines[0]['matches played']) < num_games):
         calculate_elo(engines, average_elo)
         print_current_scores(engines)
         print('Current time:', time.ctime(time.time()))
-        run_round_robin(engines)
+        run_round_robin(engines, book, draw_board=draw_board)
+
+    f = open('Final test results', 'r')
+    data = f.readlines()
+    f.close()
+    print_current_scores(engines, test_file='Final test results')
+    f = open('Final test results', 'r')
+    data.extend(f.readlines())
+    f.close()
+    f = open('Final test results', 'w')
+    for item in data:
+        if item != '':
+            f.write(item)
+    f.close()
 
 
 '''
@@ -836,7 +897,7 @@ Similar to test_engines, but the purpose of this one is to quickly evaluate the 
 Last Modified: 21/12/2021
 Last Modified by: Arkleseisure
 '''
-def test_engine(other_engines, test_engine, times, elos):
+def test_engine(other_engines, test_engine, times, elos, book):
     main_engines = []
     for i in range(len(times)):
         main_engines.append({'name': test_engine, 'time': times[i], 'scores': [], 'draws': [], 'matches played': [], 'calculated elo': 0, 'elo error': [], 'total elo error': 0, 'nodes': 0, 'total time': 0, 'speeds': [], 'elo known': False})
@@ -862,12 +923,12 @@ def test_engine(other_engines, test_engine, times, elos):
     while True:
         for i in range(len(times)):
             for j in range(len(other_engines)):
-                result = play_test_game(main_engines[i], other_engines[j])
+                result = play_test_game(main_engines[i], other_engines[j], book)
                 main_engines[i]['scores'][j] += result
                 if result == 0.5:
                     main_engines[i]['draws'][j] += 1
                 
-                result = play_test_game(other_engines[j], main_engines[i])
+                result = play_test_game(other_engines[j], main_engines[i], book)
                 main_engines[i]['scores'][j] += 1 - result
                 if result == 0.5:
                     main_engines[i]['draws'][j] += 1
@@ -878,7 +939,12 @@ def test_engine(other_engines, test_engine, times, elos):
         print_current_scores(main_engines)
         print('Current time:', time.ctime(time.time()))
 
-
+'''
+Gets the engine moves in a variety of positions... Made to be executed with the engine itself printing things out so that its output 
+can be compared with other engines.
+Last Modified: 02/01/2022
+Last Modified by: Arkleseisure
+'''
 def test_engine_on_pos(engine_name):
     fen_list = [initial_pos_fen, 
             'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1', 
@@ -887,11 +953,157 @@ def test_engine_on_pos(engine_name):
             'r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1']
     
     fen_names = ['Initial position', 'Kiwipete', 'Rook endgame', 'White to play', 'Black to play']
-    time = 20
+    time_allowed = 20
     for i in range(len(fen_list)):
         print('\nNext fen:', fen_names[i])
-        background, buttons, game, zobrist_numbers = initialize_game(fen_list[i])
-        value, depth, nodes, move = get_engine_move(game, zobrist_numbers, time, get_engine_code(engine_name))
+        game, zobrist_numbers = initialize_game(fen_list[i], using_pygame=False)
+        value, depth, nodes, move = get_engine_move(game, zobrist_numbers, time_allowed, book={}, engine_code=get_engine_code(engine_name))
+
+'''
+Returns an opening book from the text file 'Opening book' created with create_opening_book()
+Last Modified: 21/2/2022
+Last Modified by: Arkleseisure
+'''
+def get_opening_book():
+    # opens the text file containing the opening book
+    f = open('Opening book', 'r')
+    book = {}
+    move = ''
+    for item in f.readlines():
+        entry = item.split()
+
+        # gets the key for that entry
+        try:
+            key = int(entry[0])
+        except ValueError:
+            print(entry)
+            key = ''
+        book[key] = {}
+
+        # gets the possible moves from the entry
+        item = 0
+        for i in range(len(entry)):
+            if move != '':
+                try:
+                    # for each move two numbers are stored: 1. the number of times it was played, 2. the score from that position
+                    if item == 0:
+                        book[key][move] = [int(entry[i])]
+                    else:
+                        book[key][move].append(float(entry[i]))
+                    item += 1
+                    if item == 2:
+                        move = ''
+                except ValueError:
+                    print(entry[i])
+                    print(entry)
+            # sets the move variable to the new move
+            elif len(entry[i]) <= 5:
+                move = entry[i]
+                item = 0
+
+        if book[key] == {}:
+            print(item)
+    return book
+
+'''
+Saves opening data into an opening book file named 'Opening book'
+Last Modified: 21/2/2022
+Last Modified by: Arkleseisure
+'''
+def print_book(book):
+    previous_book = get_opening_book()
+    f = open('Opening book', 'w')
+    min_visit_sum = 5
+    # adds results from previous books to this book so that data isn't lost
+    for key in previous_book:
+        if key in book:
+            for key2 in previous_book[key]:
+                if key2 in book[key]:
+                    for i in range(len(previous_book[key][key2])):
+                        book[key][key2][i] += previous_book[key][key2][i]
+                else:
+                    book[key][key2] = previous_book[key][key2]
+        else:
+            book[key] = previous_book[key]
+
+    for key in book:
+        visit_sum = sum((book[key][key2][0]) for key2 in book[key].keys())
+        if visit_sum > min_visit_sum:
+            book_entry = str(key)
+            for key2 in book[key].keys():
+                book_entry += ' ' + key2 + ' ' + str(book[key][key2][0]) + ' ' + str(book[key][key2][1])
+            f.write(book_entry + '\n')
+    f.close()
+
+'''
+Creates an opening book by going through a file named 'All_training_data', which must contain games saved in the form 'e2e4 e7e5 g1f3 ... 1/2-1/2'
+Saves positions which have been reached at least a certain number of times to an opening file. 
+Last Modified: 21/2/2022
+Last Modified by: Arkleseisure
+'''
+def create_opening_book():
+    f = open('All_training_data', 'r')
+    all_games = f.readlines()[1628000:]
+    f.close()
+    book = {}
+    i = 0
+    for item in all_games:
+        i += 1
+        if i % 1000 == 0:
+            print(i, time.ctime(time.time()))
+
+        next_game = item.split()
+        game, zobrist_numbers = initialize_game(using_pygame=False)
+        background = 0
+        buttons = 0
+        using_game = True
+        if next_game[-1] == '1/2-1/2':
+            score = 0.5
+        elif next_game[-1] == '1-0':
+            score = 1
+        elif next_game[-1] == '0-1':
+            score = 0
+        else:
+            using_game = False
+
+        if using_game:
+            player = 0
+            for move in next_game[:-1]:
+                if game.hash in book.keys():
+                    if move in book[game.hash].keys():
+                        # abs(player - score) returns 1 if player = 0 and score = 1 or player = 1 and score = 0 (player 0 is white, 1 black)
+                        book[game.hash][move][0] += 1
+                        book[game.hash][move][1] += abs(player - score)
+                    else:
+                        book[game.hash][move] = [1, abs(player - score)]
+                else:
+                    book[game.hash] = {move: [1, abs(player - score)]}
+                    
+                possible_moves = legal_moves(game)
+                current_move = convert_text_to_bitboard_move(move, game)
+                move_wrong = True
+                for poss_move in possible_moves:
+                    if poss_move[0] == current_move[0] and poss_move[1] == current_move[1] and poss_move[2] == current_move[2]:
+                        game = apply(game, poss_move, zobrist_numbers)
+                        move_wrong = False
+                        break;
+                if move_wrong:
+                    break;
+                player = 1 - player
+
+        # removes superfluous positions which are wasting storage
+        if i % 10000 == 0:
+            print(len(book))
+            pop_list = []
+            for item in book:
+                times_reached = sum((book[item][key][0]) for key in book[item].keys())
+                if times_reached == 1:
+                    pop_list.append(item)
+            for item in pop_list:
+                book.pop(item)
+            print(len(book))
+
+    print_book(book)
 
 
 '''
@@ -899,16 +1111,50 @@ Function used to quickly test out a new feature... stuff in here can largely be 
 Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
-def do_test_stuff(colour, ai):
-    '''
-    speed_test()
+def do_test_stuff():
     '''
     engine_names = ['v5', 'v6']
-    times = [0.1]
-    elos = []
-    test_engines(engine_names, times, elos)
+    times = [0.1, 0.2, 0.5]
+    elos = [1075, 1180, 1310]
+    test_engines(engine_names, times, elos, draw_board=False)
+
+
+    speed_test()
+
+    # engines = ['0_offset', '2_offset', 
+    engines = ['30_offset', '40_offset']
+    book = get_opening_book()
+    print(len(book))
+    
+
+    print('Opening training data')
+    f = open('All_training_data', 'r')
+    a = f.readlines()
+    print('data opened')
+    for i in range(len(a)):
+        print('Game', i + 1)
+        game_moves = a[i].split()[:-1]
+        background, buttons, game, zobrist_numbers = initialize_game()
+        for item in game_moves:
+            print('applying move', item)
+            draw_board(0, background, buttons, game.board, game.last_move, current_move=0)
+            # time.sleep(1)
+        print('game finished')
 
     '''
+    engines = ['v1update', 'v2update']
+    times = [0.1, 0.2, 0.5]
+    elos = []
+    test_engines(engines, times, elos)
+
+    '''
+    for i in range(len(engines)):
+        engine_names = ['no_phase', engines[i]]
+        times = [1]
+        elos = [0]
+        test_engines(engine_names, times, elos, draw_board=True, num_games=1000)
+
+
     other_engines = [{'name': 'v3', 'time': 0.5},
                      {'name': 'v3', 'time': 0.2},
                      {'name': 'v2update', 'time': 0.5},
