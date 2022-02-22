@@ -3,8 +3,7 @@ import sys
 import random
 import time
 import math
-from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, print_move
-from draw_board import print_board
+from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, print_move, print_board, convert_text_to_bitboard_move
 
 
 # imports the c libraries
@@ -42,7 +41,7 @@ Last Modified by: Arkleseisure
 '''
 class Game(Structure):
 	_fields_ = [('piece_list', (Piece * 32)), ('board', (c_ulonglong * 12)), ('hash', c_ulonglong), ('past_hash_list', (c_ulonglong * 100)), ('last_move', (c_ulonglong * 3)), 
-			 ('to_play', c_int), ('ply_counter', c_int), ('castling', c_int), ('value', c_float), ('current_np_material', c_float)]
+			 ('to_play', c_int), ('ply_counter', c_int), ('castling', c_int), ('value', c_float), ('current_np_material', c_float), ('num_pawns', (c_int * 2))]
 
 
 '''
@@ -65,7 +64,9 @@ def apply(game, move, zobrist_numbers):
 	c_removed_hash = (c_ulonglong * 1)()
 	c_move = (c_ulonglong * 3)(*move)
 	c_game = (Game * 1)(*[game])
-
+	print(game.ply_counter)
+	for i in range(5):
+		print(game.past_hash_list[i])
 	piece_taken = game_mech.apply(c_game, c_move, c_zobrist_numbers, c_removed_hash)
 
 	return c_game[0]
@@ -105,7 +106,7 @@ current_value: evaluation of the current position
 Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
-def get_engine_move(game, zobrist_numbers, time_allowed, engine_code=engine, value_output='int'):
+def get_engine_move(game, zobrist_numbers, time_allowed, book, engine_code=engine, value_output='int'):
 	c_game = (Game * 1)(*[game])
 	c_zobrist_numbers = (c_ulonglong * 793)(*zobrist_numbers)
 	depth = 1
@@ -118,8 +119,28 @@ def get_engine_move(game, zobrist_numbers, time_allowed, engine_code=engine, val
 	c_nodes = (c_ulonglong * 1)(*[0])
 
 	if len(moves) == 1:
-		return 0, 0, 0, moves[0]
+		return 0.01, 0, 0, moves[0]
 
+	# If the position is in the opening book, it chooses a random move according to how high it has scored and how much it was played in the human database
+	if game.hash in book:
+		# the things stored about each move are 1. number of times it occured, N, and 2. total score from that position, s.
+		# these are weighted according to the formula: s * s/N, which gives a weight to the fractional score, meaning it avoids common blunders, 
+		# and to the frequency of occurence meaning it plays mainline moves.
+		total_score = sum(book[game.hash][key][1] ** 2 / book[game.hash][key][0] for key in book[game.hash])
+		# generates a random number between 0 and the total score, which is then used to pick the move
+		pick = random.uniform(0, total_score)
+		# adds the weights of each move until it reaches the one in the pick
+		current_pick = 0
+		for key in book[game.hash]:
+			current_pick += book[game.hash][key][1] ** 2 / book[game.hash][key][0]
+			if current_pick >= pick:
+				move_choice = key
+				break;
+
+		book_move = convert_text_to_bitboard_move(move_choice, game)
+		for move in moves:
+			if (move[0] == book_move[0] and move[1] == book_move[1] and move[2] == book_move[2]):
+				return 0.01, 0, 0, move
 	value = engine_code.get_engine_move(c_game, c_zobrist_numbers, move_number, c_time_allowed, c_value, c_depth, c_nodes)
 
 	move = moves[int(move_number[0])]
@@ -177,6 +198,8 @@ def generate_zobrist_stuff(game):
 
 	game.past_hash_list[0] = c_ulonglong(game.hash)
 
+	# ensures that numbers after this point are truly random
+	random.seed(time.time())
 	return zobrist_numbers
 
 '''
