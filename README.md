@@ -37,6 +37,9 @@ Each piece type has it's own associated index, from 0 to 11. The first 6 are the
 ### Move storage
 Moves are stored as 3 64 bit numbers in an array. The first is the bitboard of the location it has come from, the second the bitboard of the location it is going to and the 3rd is a flag containing other important information about the move, such as promotions and captures. Full documentation for this is in the initialize_game function of the play_game file.
 
+### Transpositions/Transposition table
+Transpositions are positions which occur multiple times in the search through different move orders... e.g you get to the same position by playing 1.e4 e6 2.d4 as you do when you play 1.d4 e6 2.e4. A transposition table holds positions which have already been searched so that if they are hit through a transposition later on the engine can reuse the evaluation that has already been calculated.
+
 ## Main data structures
 ### Game
 This data structure essentially holds all the information you need about the current position in the game. Its variables are:
@@ -76,7 +79,7 @@ Current minimax value of the position. This is updated after each move as it is 
 Total amount of non-pawn material currently on the board. Used for interpolating between values used in the endgame and values used in the middlegame.
 
 ### Zobrist Numbers
-List of numbers used to generate 64 bit hashes for each position on the chess board.
+List of numbers used to generate 64 bit hashes for each position on the chess board. These hashes are not unique for each chess position but might as well be (64 bits is on the order of 10^19 so the likelihood of collisions is very low). They are used to detect draw by repetition, as well as index the transposition table, the opening book and the endgame tablebase (in development at time of writing).
 
 ### Engine
 Here are some of the data structures used by the engine:  
@@ -91,6 +94,12 @@ Values for each piece being poisitioned on each square in the endgame.
 
 **Max np material**:  
 Amount of non-pawn material at the start of the game. This is used to help with the interpolation between the middlegame and endgame.
+
+**Transposition table**
+Array holding the evaluation, type of node (i.e whether it was fully searched or is an upper/lower bound), depth searched and best move for positions that have been searched, indexed by part of their zobrist hash. Another part of the hash is stored to prevent collisions (i.e a transposition is incorrectly identified and the results stored are used in the wrong context.)
+
+**Nodes**
+The node class is used to store information from previous searches. For each position searched, the evaluation is stored so that it can then be used to order the moves of later searches well, hence improving their efficiency. Equally it holds the locations of its child nodes to help build up the tree and a couple of other bits and pieces to help the smooth running of the code.
 
 ## Basic functioning
 Full documentation for all functions regarding inputs and outputs should be in their docstrings.
