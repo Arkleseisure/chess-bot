@@ -29,7 +29,7 @@ __c_interface.py__ - Occasionally you may want to change the Game or Piece struc
 Bitboards are 64 bit unsigned integers used to store a board state. Each bit stores whether or not a particular piece is on that square, so for instance a piece on a1 would be stored as the number 1, on b1 as 2, c1 4, and so on. a2 would be 2 ^ 8, a3 2^16 or in other words in binary it would be stored as all 0s except for the 17th from the right, which would be a 1. The board state and moves are the main things which are stored this way.
 
 ### Piece types
-Each piece type has it's own associated index, from 0 to 11. The first 6 are the white pieces, the last 6 black. The order for both is P, N, B, R, Q, K.
+Each piece type has its own associated index, from 0 to 11. The first 6 are the white pieces, the last 6 black. The order for both is P, N, B, R, Q, K.
 
 ### Hash
 64 bit zobrist hash generated from the current position on the board. This is used to detect draw by repetition, but may also come in useful for indexing things in the future.
