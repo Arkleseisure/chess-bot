@@ -1,16 +1,17 @@
 from ctypes import CDLL, c_ulonglong, c_int, c_char, Structure, c_bool, c_double, c_float
 import sys
+import os
 import random
 import time
 import math
 from Bits_and_pieces import get_bitboard_from_fen, convert_to_text, print_move, print_board, convert_text_to_bitboard_move
 
-
 # imports the c libraries
-game_mech_lib_path = 'theories/game_mechanics_v1_%s.so' % (sys.platform)
+game_mech_lib_path = os.path.dirname(os.path.abspath(__file__)) + "\\theories\game_mechanics_v1_%s.so" % (sys.platform)
+print(game_mech_lib_path)
 game_mech = CDLL(game_mech_lib_path)
 game_mech.confirm_it_works()
-engine_lib_path = 'theories/engine_%s.so' % (sys.platform)
+engine_lib_path =  os.path.dirname(os.path.abspath(__file__)) + "\\theories/engine_v13_%s.so" % (sys.platform)
 engine = CDLL(engine_lib_path)
 engine.check_it_works()
 
@@ -64,9 +65,6 @@ def apply(game, move, zobrist_numbers):
 	c_removed_hash = (c_ulonglong * 1)()
 	c_move = (c_ulonglong * 3)(*move)
 	c_game = (Game * 1)(*[game])
-	print(game.ply_counter)
-	for i in range(5):
-		print(game.past_hash_list[i])
 	piece_taken = game_mech.apply(c_game, c_move, c_zobrist_numbers, c_removed_hash)
 
 	return c_game[0]
@@ -142,8 +140,17 @@ def get_engine_move(game, zobrist_numbers, time_allowed, book, engine_code=engin
 			if (move[0] == book_move[0] and move[1] == book_move[1] and move[2] == book_move[2]):
 				return 0.01, 0, 0, move
 	value = engine_code.get_engine_move(c_game, c_zobrist_numbers, move_number, c_time_allowed, c_value, c_depth, c_nodes)
-
-	move = moves[int(move_number[0])]
+	try:
+		move = moves[int(move_number[0])]
+	except IndexError:
+		print('Index Error')
+		print('Board was:')
+		print_board(game.board)
+		print('Moves were:')
+		print(moves)
+		print('Move given was index:')
+		print(int(move_number[0]))
+		move = moves[0]
 	return float(c_value[0]), int(c_depth[0]) - 2, int(c_nodes[0]), move
 
 '''
