@@ -10,7 +10,7 @@ from Bits_and_pieces import *
 
 initial_pos_fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 absolute_path = os.path.dirname(os.path.abspath(__file__))
-ai_time = 0.5
+ai_time = 5
 
 # wandb.init('Gotham-Chess-bot')
 
@@ -40,7 +40,7 @@ def play_game(colour, other_player):
         if other_player == 'human' or (other_player == 'ai' and game.to_play == colour):
             move, exit = get_human_move(game, background, buttons, colour, moves, value, depth)
         else:
-            value, depth, nodes, move = get_engine_move(game, zobrist_numbers, ai_time, book, printing=False)
+            value, depth, nodes, move = get_engine_move(game, zobrist_numbers, ai_time, book)
 
         if exit:
             return
@@ -1230,15 +1230,15 @@ Last Modified: 17/9/2021
 Last Modified by: Arkleseisure
 '''
 def do_test_stuff():
-    # engines = ['v7', 'v7_2']
-    other_engines = [{'name': 'v2', 'time': 0.1},
-                    {'name': 'v2', 'time': 0.2},
-                    {'name': 'v2', 'time': 0.5}]
+    engines = ['v13_2_tempo_0.6', 'v13_2_tempo_0.7', 'v13_2_tempo_0.8']
+    other_engines = [{'name': 'v12', 'time': 0.1},
+                    {'name': 'v12', 'time': 0.2},
+                    {'name': 'v12', 'time': 0.5}]
     times = [0.1, 0.2, 0.5]
-    elos = [838.9, 958.5, 1100]
-    elo_errors = [5.4, 4.9, 5.4]
-    # test_engines(engines, times, elos, draw_board=True)
-    test_engine(other_engines, 'v8', times, elos, elo_errors, get_opening_book(), draw_board=False, print_working=True)
+    elos = [1532.5, 1634.1, 1768.6]
+    elo_errors = [11.3, 11.3, 12.3]
+    #test_engines(engines, times, elos, draw_board=False)
+    test_engine(other_engines, 'v12', times, elos, elo_errors, get_opening_book(), draw_board=False, print_working=False)
 
     '''
     speed_test()
