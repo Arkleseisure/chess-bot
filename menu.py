@@ -8,13 +8,16 @@ Last Modified by: Arkleseisure
 '''
 def menu():
     # Opponent choice
-    options = ['Play human', 'Play computer', 'Exit']
+    options = ['Play human', 'Play computer', 'Testing', 'Exit']
     display_menu(options)
     option_chosen = get_option(options)
 
     # Exits if 'Exit' is chosen
     if option_chosen == len(options) - 1:
         return 0, 0, True
+    # Does testing if 'Testing' is chosen
+    elif option_chosen == len(options) - 2:
+        return option_chosen, 0, False
 
     # Colour choice
     colour_options = ['White', 'Black', 'Random']
