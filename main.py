@@ -21,12 +21,18 @@ def main():
         if not exit:
             play_game(colour, other_player)
 
-main()
+if __name__ == "__main__":
+    main()
 
 '''
 Things to do:
 -Tablebase
--Quiescence search
+-Parallel search
+-Magic bitboards
+-Stop clearing transposition table after each move
+-Pawn structure
+-Killer move    
+-Null move pruning
 
 ------------------------------------
 Perft results: Previous ai/new ai
@@ -43,48 +49,56 @@ v5: added endgame piece-square tables and interpolation
 v6: added min_np_material and changed bishop value to 3.3
 v7: added transposition table
 v8: added nodes for move ordering
+v9: added quiescence search
+v10: added NegaMax and minor efficiency improvements
+v11: optimised psqt and piece values
+v12: allowed minimax to use full search, even at interrupted depth.
+v13: introduced late move reduction and tempo bonus
 
-
-Elo: based off v2
+Elo:
     0.1     0.2     0.5
-v1  635     650     745     +-20
-v2  840     960     1100    +-5
-v3  860     995     1145    +-10
-v4  925     1040    1115    +-15
-v5  975     1080    1175    +-15
-v6  990     1075    1210    +-15
-v7  1020    1140    1250    +-10
-v8
-
-Elo: based off previous
-    0.1     0.2     0.5
-v1  635     650     745     +-20
-v2  840     960     1100    +-5
-v3  860     995     1145    +-10
-v4  930     1015    1150    +-15
-v5  965     1075    1175    +-15
-v6  980     1095    1190    +-10
-v7  1015    1115    1245    +-15
-v8  1115    1225    1350    +-15
+v1  770     800     895     +-15
+v2  1040    1150    1300    +-5
+v3  1090    1195    1340    +-10
+v4  1140    1215    1350    +-10
+v5  1180    1280    1400    +-10
+v6  1195    1310    1435    +-10
+v7  1235    1340    1490    +-10
+v8  1325    1450    1600    +-15
+v9  1415    1525    1675    +-15
+v10 1455    1585    1720    +-15
+v11 1460    1585    1735    +-10
+v12 1530    1635    1770    +-10
+v13 1745    1870    2025    +-15
 
 Speeds /kn/s:
-v1: 1354 +- 9
-v2: 868 +- 6
-v3: 1243 +- 12
-v4: 1241 +- 1
-v5: 1190 +- 12
-v6: 1174 +- 13
-v7: 1094 +- 8
-v8: 1031 +- 4
+v1: 2143 +- 21
+v2: 1362 +- 9
+v3: 1919 +- 12
+v4: 1881 +- 3
+v5: 1909 +- 17
+v6: 1846 +- 23
+v7: 1547 +- 2
+v8: 1460 +- 15
+v9:  533 +- 13
+v10: 506 +- 14
+v11: 468 +- 15
+v12: 431 +- 10
+v13: 582 +- 10
 
 Depth:
     0.1     0.2     0.5
-v1  3.32    3.46    3.73
-v2  4.11    4.53    4.87
-v3  4.38    4.72    5.06
-v4  4.39    4.78    5.15
-v5  4.44    4.76    5.15
-v6  4.36    4.74    5.11
-v7  4.63    4.97    5.45
-v8  4.96    5.43    5.89
+v1  3.35    3.54    3.93
+v2  4.38    4.74    5.06
+v3  4.57    4.91    5.24
+v4  4.62    4.90    5.28
+v5  4.71    5.08    5.48
+v6  4.55    4.90    5.25
+v7  4.86    5.18    5.57
+v8  5.16    5.59    6.01
+v9  4.57    5.12    5.72
+v10 4.23    4.92    5.57
+v11 4.33    4.85    5.41
+v12 4.57    5.03    5.59
+v13 6.50    7.19    7.95
 '''
