@@ -164,3 +164,31 @@ def print_board(board):
         for j in range(8):
             print(bin(board[i] + 2 ** 64)[8 * (j + 1) + 2: 8 * j + 2: -1])
         print()
+  
+'''
+Function to display time nicely, given a time in seconds returns a string
+
+Last Modified: 24/8/2023
+Last Modified by: Arkleseisure
+'''
+def display_time(secs):
+    levels = ['week', 'day', 'hour', 'minute', 'second', 'hundredth']
+    quantities = [7*24*3600, 24*3600, 3600, 60, 1, 0.01]
+    time_str = ''
+    
+    if secs < quantities[-1]:
+        return '0 ' + levels[-1] + 's'
+
+    i = 0
+    while quantities[i] > secs:
+        i+= 1
+      
+    for j in range(i, min(i + 3, len(quantities))):
+        nbr = secs // quantities[j]
+        secs -= nbr * quantities[j]
+        time_str += str(int(nbr)) + ' ' + levels[j]
+        if nbr > 1:
+            time_str += 's'
+        if j != len(quantities) - 1:
+            time_str += ', '
+    return time_str
