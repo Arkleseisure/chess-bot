@@ -1,0 +1,198 @@
+from c_interface import legal_moves
+import random
+from openai import OpenAI
+from Bits_and_pieces import get_bitboard_from_square, get_uci_pgn_move
+import time
+
+# client = OpenAI(base_url="http://192.168.0.26:1234/v1/")
+
+client = OpenAI()
+
+def get_llm_response(model_name, prompt, system_prompt=""):
+    completion = client.chat.completions.create(
+      model=model_name,
+      messages=[
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt}
+      ]
+    )
+
+    return completion.choices[0].message.content
+
+
+def get_random_move(game, _, __):
+    moves = legal_moves(game)
+    move = random.randint(0, len(moves) - 1)
+    return moves[move]
+
+
+def get_move_from_response(response, name, model, game, game_history, move_number):
+    system_prompt = "Your task is to output the move chosen by this sentence in uci or algebraic notation. There is no need to output anything else." \
+                    "No text other than the output move should be output."
+    prompt = response
+    llm_summary = get_llm_response(model, prompt, system_prompt)
+
+    print('Suggested move:', llm_summary)
+    moves = legal_moves(game)
+    best_move = []
+    best_move_str = 'no correct move'
+    best_index = -1
+    for move in moves:
+        uci_move, pgn_move = get_uci_pgn_move(move, game, moves)
+        if uci_move in llm_summary:
+            index = llm_summary.rfind(uci_move)
+            if index > best_index:
+                best_index = index
+                best_move = move
+                best_move_str = uci_move
+
+        if pgn_move in llm_summary:
+            index = llm_summary.rfind(pgn_move)
+            print('llm summary:', llm_summary)
+           
+            if index == 0:
+                is_correct_move = True
+            elif llm_summary[index - 1] in ['x', 'N', 'B', 'R', 'Q', 'K', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', '1', '2', '3', '4', '5', '6', '7', '8', '-']:
+                is_correct_move = False
+                print(llm_summary[index - 1])
+            else:
+                is_correct_move = True
+            
+            if (index > best_index or index == best_index - (len(pgn_move) - len(best_move_str))) and is_correct_move:
+                best_index = index
+                best_move = move
+                best_move_str = pgn_move
+
+    return best_move, best_move_str
+
+
+def get_opening_book():
+    return {}
+
+def fen(game, move_number):
+    """
+    Converts a game object into a FEN string.
+    :param game: Game struct holding all information about the game.
+    :return: FEN string.
+    """
+    piece_symbols = ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k']
+    board = [[' ' for _ in range(8)] for _ in range(8)]
+    
+    for i, bitboard in enumerate(game.board):
+        for square in range(64):
+            if (bitboard >> square) & 1:
+                row, col = divmod(square, 8)
+                board[7 - row][col] = piece_symbols[i]
+    
+    fen_rows = []
+    for row in board:
+        empty_count = 0
+        fen_row = ''
+        for cell in row:
+            if cell == ' ':
+                empty_count += 1
+            else:
+                if empty_count:
+                    fen_row += str(empty_count)
+                    empty_count = 0
+                fen_row += cell
+        if empty_count:
+            fen_row += str(empty_count)
+        fen_rows.append(fen_row)
+    
+    active_color = 'w' if game.to_play == 0 else 'b'
+    
+    castling_rights = ''
+    if game.castling & 2:
+        castling_rights += 'K'
+    if game.castling & 1:
+        castling_rights += 'Q'
+    if game.castling & 8:
+        castling_rights += 'k'
+    if game.castling & 4:
+        castling_rights += 'q'
+    if not castling_rights:
+        castling_rights = '-'
+    
+    en_passant = '-'
+    if (game.last_move[2] & 15) == 1:
+        target_square = (game.last_move[1] << 8) if game.to_play == 0 else (game.last_move[0] << 8)
+        for square in range(64):
+            if (target_square >> square) & 1:
+                col = chr((square % 8) + ord('a'))
+                row = str((square // 8) + 1)
+                en_passant = col + row
+                break
+    
+    return f"{'/'.join(fen_rows)} {active_color} {castling_rights} {en_passant} {game.ply_counter} {move_number}"
+
+
+def get_prompt(name, game, game_history, move_number):
+    prompt = ''
+    system_prompt = 'You are playing a game of chess. Your aim is to make the best move, given the following formats: ' + name + '\n'
+    system_prompt += 'Please reason about your move before giving your final answer at the end of your response.'
+    system_prompt += 'You are playing with the ' + ('white' if game.to_play == 0 else 'black') + ' pieces.'
+    match name:
+        case 'fen':
+            prompt = fen(game, move_number)
+        case 'pgn':
+            prompt = game_history['pgn']
+        case 'uci':
+            prompt = game_history['uci']
+        case 'fen,pgn':
+            prompt = 'PGN: ' + game_history['pgn'] + '\n' + 'FEN: ' + fen(game, move_number)
+        case 'fen,uci':
+            prompt = 'UCI: ' + game_history['uci'] + '\n' + 'FEN: ' + fen(game, move_number)
+        case 'pgn,uci':
+            prompt = 'PGN: ' + game_history['pgn'] + '\n' + 'UCI: ' + game_history['uci']
+        case 'fen,pgn,uci':
+            prompt = 'PGN: ' + game_history['pgn'] + '\n' + 'UCI: ' + game_history['uci'] + '\n' + 'FEN: ' + fen(game, move_number)
+        case 'piece_location':
+            prompt = 'Here is the pgn of the game so far: ' + game_history['pgn'] + ' Please reason about the current locations of the pieces, before reasoning about the position and finally giving your move.'
+    return prompt, system_prompt
+
+
+def get_llm_move_code(model, name):
+    def get_llm_move(game, game_history, move_number):
+        start = time.time()
+        prompt, system_prompt = get_prompt(name, game, game_history, move_number)
+        is_legal = False
+        failed = False
+        attempts = 0
+
+        while not is_legal: 
+            response = get_llm_response(model, prompt, system_prompt)
+            move, pgn_move = get_move_from_response(response, name, model, game, game_history, move_number)
+            attempts += 1
+            if pgn_move != 'no correct move':
+                is_legal = True
+
+            if attempts == 5 and not is_legal:
+                move = get_random_move(game, '', '')
+                uci_move, pgn_move = get_uci_pgn_move(move, game, legal_moves(game))
+                failed = True
+                is_legal = True
+
+        print('Move played:', pgn_move, '\n')
+        time_taken = time.time() - start
+        return move, attempts, time_taken, failed
+    return get_llm_move
+
+
+def get_llm_engine_code(model, name):
+    match model:
+        case 'random':
+            return get_random_move
+        case _:
+            return get_llm_move_code(model, name)
+
+
+def get_llm_engine_move(game, game_history, move_number, code):
+    return code(game, game_history, move_number)
+
+
+def get_engine_code(name):
+    pass
+
+def get_engine_move(a, b, c, d, e):
+    pass
