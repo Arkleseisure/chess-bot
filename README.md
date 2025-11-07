@@ -1,8 +1,10 @@
 # Chess bot
 
-Chess engine coded in c, with UI using the python pygame library
+Chess engine coded in c, with UI using the python pygame library.
+
 If you want to download a version to play with, this will work on Windows:
 https://drive.google.com/drive/folders/1vCnzwUARBz3m_jzsfWfNYJDO8Gg9NO6R?usp=sharing
+
 Download the entire "Chess_bot" folder and run "main.exe" to test the engine out.
 
 
